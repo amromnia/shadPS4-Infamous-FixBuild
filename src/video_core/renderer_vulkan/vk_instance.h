@@ -67,6 +67,10 @@ public:
         return queue_family_index;
     }
 
+    u32 GetSparseQueueFamilyIndex() const {
+        return sparse_queue_family_index;
+    }
+
     vk::Queue GetGraphicsQueue() const {
         return graphics_queue;
     }
@@ -78,6 +82,10 @@ public:
     /// Returns the second queue of the graphics family the game's compute rings run on, or null.
     vk::Queue GetAsyncQueue() const {
         return async_queue;
+    }
+
+    vk::Queue GetSparseQueue() const {
+        return sparse_queue;
     }
 
     TracyVkCtx GetProfilerContext() const {
@@ -522,11 +530,13 @@ private:
     vk::Queue present_queue;
     vk::Queue async_queue;
     vk::Queue graphics_queue;
+    vk::Queue sparse_queue;
     std::vector<vk::PhysicalDevice> physical_devices;
     std::vector<std::string> available_extensions;
     std::unordered_map<vk::Format, vk::FormatProperties3> format_properties;
     TracyVkCtx profiler_context{};
     u32 queue_family_index{0};
+    u32 sparse_queue_family_index{0};
     bool custom_border_color{};
     bool fragment_shader_barycentric{};
     bool amd_shader_explicit_vertex_parameter{};

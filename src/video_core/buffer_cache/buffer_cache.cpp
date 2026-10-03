@@ -1228,7 +1228,7 @@ void BufferCache::SubmitPendingArenaBinds(Vulkan::SubmitInfo& info) {
 
     info.AddWait(signal_sema, signal_tick);
     const auto start = std::chrono::steady_clock::now();
-    auto submit_result = instance.GetGraphicsQueue().bindSparse(sparse_info);
+    auto submit_result = instance.GetSparseQueue().bindSparse(sparse_info);
     ASSERT_MSG(submit_result != vk::Result::eErrorDeviceLost, "Device lost during submit");
     const auto elapsed = std::chrono::steady_clock::now() - start;
     Common::Perf::Record(Common::Perf::Stall::SparseBind,
