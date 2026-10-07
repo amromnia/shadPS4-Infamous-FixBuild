@@ -129,7 +129,7 @@ private:
     void BindComputePipeline(const ComputePipeline& pipeline);
 
     void BindVertexBuffers(const GraphicsPipeline* pipeline);
-    void BindIndexBuffer(u32 index_offset = 0);
+    void BindIndexBuffer(u32 index_offset = 0, bool is_indirect = false);
 
     void ResetBindings(bool is_compute);
 
