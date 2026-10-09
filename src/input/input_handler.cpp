@@ -13,6 +13,7 @@
 #include <string_view>
 #include <typeinfo>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "SDL3/SDL_events.h"
@@ -187,24 +188,44 @@ std::filesystem::path GetInputConfigFile(const std::string& game_id) {
             {"motion_tilt_right", "h"},
             {"motion_shake", "t"},
         };
+        // Controllers without motion sensors emulate tilt and shake from their bindings, and the
+        // keyboard keys above are not usable on a controller. The entries below are added on top of
+        // the bindings above, so that a controller can trigger the motion emulation while the
+        // keyboard keeps its keys, without taking a button away from the games.
+        constexpr std::array<std::pair<std::string_view, std::string_view>, 3> motion_bindings = {{
+            {"motion_tilt_left", "back, pad_left"},
+            {"motion_tilt_right", "back, pad_right"},
+            {"motion_shake", "back, pad_up"},
+        }};
         std::string legacy_capture_binding;
         bool legacy_capture_binding_found = false;
+        // Normalized "output=input" lines the config already has, and outputs the user unbound
+        std::unordered_set<std::string> existing_bindings;
+        std::unordered_set<std::string> unbound_outputs;
         std::ifstream global_in(config_file);
         std::string line;
         while (std::getline(global_in, line)) {
             line.erase(std::remove_if(line.begin(), line.end(),
                                       [](unsigned char c) { return std::isspace(c); }),
                        line.end());
+            // Discard comments
+            line = line.substr(0, line.find('#'));
             std::size_t equal_pos = line.find('=');
             if (equal_pos == std::string::npos) {
                 continue;
             }
             std::string output_string = line.substr(0, equal_pos);
+            std::string input_string = line.substr(equal_pos + 1);
             if (output_string == "hotkey_renderdoc_capture") {
-                legacy_capture_binding = line.substr(equal_pos + 1);
+                legacy_capture_binding = input_string;
                 legacy_capture_binding_found = true;
             }
             default_bindings_to_add.erase(output_string);
+            existing_bindings.insert(line);
+            // "unmapped" can carry a gamepad id, e.g. "unmapped:1"
+            if (input_string == "unmapped" || input_string.starts_with("unmapped:")) {
+                unbound_outputs.insert(output_string);
+            }
         }
         global_in.close();
         if (legacy_capture_binding_found) {
@@ -216,6 +237,19 @@ std::filesystem::path GetInputConfigFile(const std::string& game_id) {
         std::ofstream global_out(config_file, std::ios::app);
         for (auto const& b : default_bindings_to_add) {
             global_out << b.first << " = " << b.second << "\n";
+        }
+        for (const auto& [output, binding] : motion_bindings) {
+            // Compare the way the config is read, with all whitespace removed
+            std::string default_binding = std::string(output) + "=" + std::string(binding);
+            default_binding.erase(
+                std::remove_if(default_binding.begin(), default_binding.end(),
+                               [](unsigned char c) { return std::isspace(c); }),
+                default_binding.end());
+            if (existing_bindings.contains(default_binding) ||
+                unbound_outputs.contains(std::string(output))) {
+                continue;
+            }
+            global_out << output << " = " << binding << "\n";
         }
     }
 
