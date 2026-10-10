@@ -520,12 +520,13 @@ bool Rasterizer::OrderOnAsync(u64 commands_before) {
     }
     const auto* stream_buffer = &buffer_cache.GetStreamBuffer();
     u64 dependency = 0;
-    for (const auto& [buffer, offset, size, is_written] : bound_buffers) {
+    for (const auto& [buffer, offset, size, src_access] : bound_buffers) {
         // Stream buffer memory is only written again once the graphics queue is done with the
         // tick it was written in, which waits for what the second queue was given meanwhile.
         if (buffer == stream_buffer) {
             continue;
         }
+        const bool is_written = static_cast<bool>(src_access & vk::AccessFlagBits2::eShaderWrite);
         dependency =
             std::max(dependency, runtime.GraphicsDependency(buffer, offset, size, !is_written));
     }
