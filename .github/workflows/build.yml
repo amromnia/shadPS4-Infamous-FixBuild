@@ -4,23 +4,6 @@
 name: Build and Release
 
 on:
-  push:
-    branches-ignore: [Pre-release-shadPS4-*]
-    paths-ignore:
-      - "documents/**"
-      - "**/*.md"
-      - ".github/symbolize.txt"
-      - ".github/workflows/symbolize.yml"
-      - ".github/workflows/scripts/symbolize.py"
-
-  pull_request:
-    paths-ignore:
-      - "documents/**"
-      - "**/*.md"
-      - ".github/symbolize.txt"
-      - ".github/workflows/symbolize.yml"
-      - ".github/workflows/scripts/symbolize.py"
-
   workflow_dispatch:
 
 concurrency:

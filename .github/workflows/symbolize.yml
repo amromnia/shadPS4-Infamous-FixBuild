@@ -6,12 +6,6 @@
 name: Symbolize profiler samples
 
 on:
-  push:
-    paths:
-      - ".github/symbolize.txt"
-      - ".github/workflows/symbolize.yml"
-      - ".github/workflows/scripts/symbolize.py"
-
   workflow_dispatch:
     inputs:
       run_id:
