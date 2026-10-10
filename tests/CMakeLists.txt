@@ -387,6 +387,7 @@ gtest_discover_tests(shadps4_pipeline_compiler_test
 # ===========================================================================
 
 add_executable(shadps4_region_manager_test
+    ${CMAKE_SOURCE_DIR}/src/common/perf_profiler.cpp
     # Settings are read when a region is created
     ${CMAKE_SOURCE_DIR}/src/core/emulator_settings.cpp
     ${CMAKE_SOURCE_DIR}/src/core/emulator_state.cpp
