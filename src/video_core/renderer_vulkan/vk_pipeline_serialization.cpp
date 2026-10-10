@@ -15,7 +15,7 @@ namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
 static constexpr u32 ShaderBinaryVersion = 8u;
 static constexpr u32 ShaderMetaVersion = 6u;
-static constexpr u32 PipelineKeyVersion = 4u;
+static constexpr u32 PipelineKeyVersion = 5u;
 } // namespace Serialization
 
 namespace Vulkan {
@@ -26,7 +26,7 @@ namespace {
 // and is changed to the next such build whenever it changes again. Keying the cache to every
 // build dropped it with each update, and some games compile hundreds of compute shaders while
 // they are played, at up to a few hundred milliseconds each.
-constexpr std::string_view ShaderCacheRevision = "386defd5d40fc5826e9a642707143a1257e09940";
+constexpr std::string_view ShaderCacheRevision = "ally-z1-integrated-2026-10-10-v1";
 } // Anonymous namespace
 
 void RegisterPipelineData(const ComputePipelineKey& key,

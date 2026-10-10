@@ -738,7 +738,8 @@ void Rasterizer::BindVertexBuffers(const GraphicsPipeline* pipeline) {
         if (!unwritten) {
             needs_barrier |= runtime.IsBufferAccessed(range.buffer, range.offset, size);
         }
-        bound_buffers.emplace_back(range.buffer, range.offset, static_cast<u32>(size), vk::AccessFlagBits2::eVertexAttributeRead);
+        bound_buffers.emplace_back(range.buffer, range.offset, static_cast<u32>(size),
+                                   vk::AccessFlagBits2::eVertexAttributeRead);
     }
 
     // Bind vertex buffers
@@ -829,7 +830,8 @@ void Rasterizer::ResetBindings(bool is_compute) {
     for (const auto [buffer, offset, size, src_access] : bound_buffers) {
         // Stream buffer memory is only written again once the GPU is done with it, so reads of
         // it need no tracking, and most small buffers are read from there.
-        if (buffer == stream_buffer && !(src_access & vk::AccessFlagBits2::eShaderWrite)) {
+        if (buffer == stream_buffer &&
+            !(src_access & vk::AccessFlagBits2::eShaderWrite)) {
             continue;
         }
         const auto dst_stage = is_compute ? vk::PipelineStageFlagBits2::eComputeShader
