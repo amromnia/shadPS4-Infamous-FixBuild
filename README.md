@@ -206,10 +206,11 @@ Tilt left | `G`, or View/Back + D-pad Left
 Tilt right | `H`, or View/Back + D-pad Right
 Shake | `T`, or View/Back + D-pad Up
 Point with the mouse | Toggle with `F6`
+Roll with the mouse | Hold Right Shift while mouse gyro is enabled
 
 These bindings are added to `global.ini` in the emulator's `input_config` folder, and can be
-changed there or in the settings menu like any other binding. On a DualShock 4 or DualSense the real
-sensors are used instead, and the bindings above are only needed for controllers without them.
+changed there or in the settings menu like any other binding. Real sensors are used when synthetic
+motion is inactive. Active tilt, shake, and mouse motion override real or virtual-controller sensors.
 
 
 # Firmware files

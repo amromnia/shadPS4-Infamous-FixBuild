@@ -63,8 +63,9 @@ constexpr float HalfPi = 1.5707964f;
 constexpr float TwoPi = 6.2831855f;
 // A quarter turn in a quarter of a second, roughly how fast a hand turns a controller over.
 constexpr float EmulatedTiltSpeed = TwoPi;
-constexpr float EmulatedShakeFrequency = 5.0f;
-constexpr float EmulatedShakeAmplitude = 2.0f * Gravity;
+constexpr float EmulatedShakeFrequency = 9.0f;
+constexpr float EmulatedShakeAmplitude = 2.5f * Gravity;
+constexpr u64 EmulatedShakeMinimumDuration = 1'000'000;
 
 Quaternion Multiply(const Quaternion& a, const Quaternion& b) {
     return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
@@ -145,19 +146,20 @@ void GameController::Axis(Input::Axis axis, int value, bool smooth) {
 
 void GameController::UpdateGyro(const float gyro[3]) {
     std::lock_guard lock{m_state_mutex};
-    m_motion_emulated = false;
     std::memcpy(gyro_buf, gyro, sizeof(gyro_buf));
 }
 
 void GameController::UpdateAcceleration(const float acceleration[3]) {
     std::lock_guard lock{m_state_mutex};
-    m_motion_emulated = false;
     std::memcpy(accel_buf, acceleration, sizeof(accel_buf));
 }
 
-void GameController::SetEmulatedRotationRate(const float world_rate[3]) {
+void GameController::SetEmulatedRotationRate(const float world_rate[3], bool active) {
     std::lock_guard lock{m_state_mutex};
-    EnableMotionEmulationLocked();
+    if (active) {
+        EnableMotionEmulationLocked();
+    }
+    m_mouse_motion_active = active;
     std::memcpy(m_emu_world_rate, world_rate, sizeof(m_emu_world_rate));
 }
 
@@ -165,12 +167,18 @@ void GameController::SetEmulatedTilt(TiltDirection direction, bool held) {
     std::lock_guard lock{m_state_mutex};
     EnableMotionEmulationLocked();
     (direction == TiltDirection::Left ? m_emu_tilt_left : m_emu_tilt_right) = held;
+    LOG_INFO(Input, "Emulated tilt: user {}, direction {}, held {}", user_id,
+             direction == TiltDirection::Left ? "left" : "right", held);
 }
 
 void GameController::SetEmulatedShake(bool shaking) {
     std::lock_guard lock{m_state_mutex};
     EnableMotionEmulationLocked();
+    if (shaking && m_emu_shake_start == 0) {
+        m_emu_shake_start = Libraries::Kernel::sceKernelGetProcessTime();
+    }
     m_emu_shake = shaking;
+    LOG_INFO(Input, "Emulated shake: user {}, held {}", user_id, shaking);
 }
 
 void GameController::PollState() {
@@ -238,6 +246,8 @@ void GameController::DisconnectController() {
     std::fill(accel_buf, accel_buf + 3, 0.0f);
     accel_buf[1] = 9.81f;
     m_motion_emulated = false;
+    m_mouse_motion_active = false;
+    m_emu_shake_start = 0;
     m_next_touch_id = 1;
     m_touch_down_timestamp = 0;
     m_state.connected = false;
@@ -270,6 +280,7 @@ void GameController::EnableMotionEmulationLocked() {
     m_emu_tilt_left = false;
     m_emu_tilt_right = false;
     m_emu_shake = false;
+    m_emu_shake_start = 0;
     m_emu_shake_phase = 0.0f;
     m_last_motion_update = 0;
 }
@@ -284,6 +295,18 @@ void GameController::UpdateEmulatedMotionLocked(u64 timestamp) {
     }
     m_last_motion_update = timestamp;
 
+    const bool shaking = m_emu_shake_start != 0 &&
+                         (m_emu_shake || timestamp - m_emu_shake_start <
+                                             EmulatedShakeMinimumDuration);
+    if (!shaking) {
+        m_emu_shake_start = 0;
+    }
+    if (!m_mouse_motion_active && !m_emu_tilt_left && !m_emu_tilt_right && !shaking &&
+        m_emu_roll == 0.0f) {
+        m_motion_emulated = false;
+        return;
+    }
+
     // Mouse rotation turns the controller around the world axes, so it aims the same way
     // whichever way the controller is tilted.
     m_emu_aim = Normalize(Multiply(FromRotationVector(m_emu_world_rate, dt), m_emu_aim));
@@ -294,7 +317,15 @@ void GameController::UpdateEmulatedMotionLocked(u64 timestamp) {
     const float max_step = EmulatedTiltSpeed * dt;
     m_emu_roll += std::clamp(target_roll - m_emu_roll, -max_step, max_step);
     const Quaternion roll{0.0f, 0.0f, std::sin(0.5f * m_emu_roll), std::cos(0.5f * m_emu_roll)};
-    const Quaternion pose = Multiply(m_emu_aim, roll);
+    float shake = 0.0f;
+    if (shaking) {
+        m_emu_shake_phase =
+            std::fmod(m_emu_shake_phase + TwoPi * EmulatedShakeFrequency * dt, TwoPi);
+        shake = std::sin(m_emu_shake_phase);
+    }
+    const Quaternion wobble{std::sin(0.15f * shake), 0.0f, 0.0f,
+                             std::cos(0.15f * shake)};
+    const Quaternion pose = Multiply(Multiply(m_emu_aim, roll), wobble);
 
     // The gyro reports the rotation between the previous pose and this one, in controller axes.
     Quaternion delta = Multiply(Conjugate(m_emu_pose), pose);
@@ -304,26 +335,19 @@ void GameController::UpdateEmulatedMotionLocked(u64 timestamp) {
     const float sin_half = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
     if (dt > 0.0f && sin_half > 1e-6f) {
         const float scale = 2.0f * std::atan2(sin_half, delta.w) / (sin_half * dt);
-        gyro_buf[0] = delta.x * scale;
-        gyro_buf[1] = delta.y * scale;
-        gyro_buf[2] = delta.z * scale;
+        m_state.angularVelocity = {delta.x * scale, delta.y * scale, delta.z * scale};
     } else {
-        std::fill(gyro_buf, gyro_buf + 3, 0.0f);
+        m_state.angularVelocity = {};
     }
     m_emu_pose = pose;
 
     // The accelerometer reports the reaction to gravity, plus the up and down motion of a shake,
     // turned into controller axes.
-    float up = Gravity;
-    if (m_emu_shake) {
-        m_emu_shake_phase =
-            std::fmod(m_emu_shake_phase + TwoPi * EmulatedShakeFrequency * dt, TwoPi);
-        up += EmulatedShakeAmplitude * std::sin(m_emu_shake_phase);
-    }
+    const float up = Gravity + EmulatedShakeAmplitude * shake;
     const auto& q = pose;
-    accel_buf[0] = up * 2.0f * (q.x * q.y + q.w * q.z);
-    accel_buf[1] = up * (1.0f - 2.0f * (q.x * q.x + q.z * q.z));
-    accel_buf[2] = up * 2.0f * (q.y * q.z - q.w * q.x);
+    m_state.acceleration = {up * 2.0f * (q.x * q.y + q.w * q.z),
+                            up * (1.0f - 2.0f * (q.x * q.x + q.z * q.z)),
+                            up * 2.0f * (q.y * q.z - q.w * q.x)};
 }
 
 void GameController::PushStateLocked(u64 timestamp) {
@@ -331,9 +355,9 @@ void GameController::PushStateLocked(u64 timestamp) {
         timestamp = Libraries::Kernel::sceKernelGetProcessTime();
     }
     m_state.UpdateAxisSmoothing(timestamp);
-    UpdateEmulatedMotionLocked(timestamp);
     m_state.OnGyro(gyro_buf);
     m_state.OnAccel(accel_buf);
+    UpdateEmulatedMotionLocked(timestamp);
     UpdateOrientationLocked(timestamp);
     m_state.time = timestamp;
     m_state.touch_time_since_held_down =

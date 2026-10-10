@@ -105,7 +105,7 @@ public:
     // Motion emulation for controllers without motion sensors. The emulated controller keeps a
     // physical pose, so its gyro, accelerometer and orientation agree like a real controller's.
     // Real sensor data from UpdateGyro/UpdateAcceleration turns the emulation off again.
-    void SetEmulatedRotationRate(const float world_rate[3]);
+    void SetEmulatedRotationRate(const float world_rate[3], bool active = true);
     void SetEmulatedTilt(TiltDirection direction, bool held);
     void SetEmulatedShake(bool shaking);
     void PollState();
@@ -133,6 +133,7 @@ private:
     u64 m_last_orientation_update{};
 
     bool m_motion_emulated{};
+    bool m_mouse_motion_active{};
     Libraries::Pad::OrbisFQuaternion m_emu_aim{0.0f, 0.0f, 0.0f, 1.0f};
     Libraries::Pad::OrbisFQuaternion m_emu_pose{0.0f, 0.0f, 0.0f, 1.0f};
     float m_emu_world_rate[3]{};
@@ -140,6 +141,7 @@ private:
     bool m_emu_tilt_left{};
     bool m_emu_tilt_right{};
     bool m_emu_shake{};
+    u64 m_emu_shake_start{};
     float m_emu_shake_phase{};
     u64 m_last_motion_update{};
     Colour colour;

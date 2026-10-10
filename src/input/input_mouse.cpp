@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include <cmath>
 
 #include "common/assert.h"
+#include "common/logging/log.h"
 #include "common/types.h"
 #include "input/controller.h"
 #include "input/input_handler.h"
@@ -32,6 +34,9 @@ bool ToggleMouseModeTo(MouseMode m) {
         mouse_mode = MouseMode::Off;
     } else {
         mouse_mode = m;
+    }
+    if (m == MouseMode::Gyro) {
+        LOG_INFO(Input, "Mouse gyro enabled: {}", mouse_mode == MouseMode::Gyro);
     }
     return mouse_mode == m;
 }
@@ -88,10 +93,12 @@ void EmulateJoystick(GameController* controller, u32 interval) {
 void EmulateGyro(GameController* controller, u32 interval) {
     float d_x = 0, d_y = 0;
     SDL_GetRelativeMouseState(&d_x, &d_y);
-    float gyro_from_mouse[3] = {-d_y / 100, -d_x / 100, 0.0f};
+    const float elapsed = static_cast<float>(std::max(interval, 1u)) / 1000.0f;
+    const float scale = 0.01f / elapsed;
+    float gyro_from_mouse[3] = {-d_y * scale, -d_x * scale, 0.0f};
     if (mouse_gyro_roll_mode) {
         gyro_from_mouse[1] = 0.0f;
-        gyro_from_mouse[2] = -d_x / 100;
+        gyro_from_mouse[2] = -d_x * scale;
     }
     controller->SetEmulatedRotationRate(gyro_from_mouse);
 }
@@ -127,7 +134,7 @@ Uint32 MousePolling(void* param, Uint32 id, Uint32 interval) {
     if (was_gyro && mouse_mode != MouseMode::Gyro) {
         // Otherwise the last mouse movement keeps turning the controller after gyro mode is off
         constexpr float no_rotation[3] = {0.0f, 0.0f, 0.0f};
-        controller->SetEmulatedRotationRate(no_rotation);
+        controller->SetEmulatedRotationRate(no_rotation, false);
     }
     was_gyro = mouse_mode == MouseMode::Gyro;
     switch (mouse_mode) {

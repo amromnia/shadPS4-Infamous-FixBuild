@@ -187,6 +187,7 @@ std::filesystem::path GetInputConfigFile(const std::string& game_id) {
             {"motion_tilt_left", "g"},
             {"motion_tilt_right", "h"},
             {"motion_shake", "t"},
+            {"mouse_gyro_roll_mode", "rshift"},
         };
         // Controllers without motion sensors emulate tilt and shake from their bindings, and the
         // keyboard keys above are not usable on a controller. The entries below are added on top of
