@@ -19,9 +19,13 @@ permissions:
   actions: read
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   symbolize:
-    runs-on: ubuntu-24.04
+    runs-on: windows-2025-vs2026
     steps:
     - uses: actions/checkout@v6
 
@@ -49,4 +53,4 @@ jobs:
         merge-multiple: true
 
     - name: Symbolize
-      run: python3 .github/workflows/scripts/symbolize.py map/shadPS4.map offsets.txt
+      run: python .github/workflows/scripts/symbolize.py map/shadPS4.map offsets.txt
