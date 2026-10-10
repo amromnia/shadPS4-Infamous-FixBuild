@@ -834,9 +834,11 @@ void Rasterizer::ResetBindings(bool is_compute) {
             !(src_access & vk::AccessFlagBits2::eShaderWrite)) {
             continue;
         }
-        const auto dst_stage = is_compute ? vk::PipelineStageFlagBits2::eComputeShader
-                                          : vk::PipelineStageFlagBits2::eAllGraphics;
-        runtime.AccessBuffer(buffer, offset, size, dst_stage, src_access);
+        const auto src_stage = (src_access & vk::AccessFlagBits2::eIndirectCommandRead)
+                                   ? vk::PipelineStageFlagBits2::eDrawIndirect
+                                   : is_compute ? vk::PipelineStageFlagBits2::eComputeShader
+                                                : vk::PipelineStageFlagBits2::eAllGraphics;
+        runtime.AccessBuffer(buffer, offset, size, src_stage, src_access);
     }
     if (std::exchange(untracked_access, false)) {
         runtime.NoteUntrackedAccess();

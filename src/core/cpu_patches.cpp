@@ -27,6 +27,10 @@
 #include "core/tls.h"
 #include "cpu_patches.h"
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #else
