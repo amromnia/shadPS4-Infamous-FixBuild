@@ -373,6 +373,9 @@ private:
     size_t next_resident_hint{};
     vk::DeviceMemory residency_chunk{};
     u64 residency_chunk_used{};
+    u64 residency_chunk_capacity{};
+    u64 residency_chunk_size{};
+    u32 arena_memory_type_bits{};
 
     u32 arena_memory_type_index{};
     u32 block_size{};

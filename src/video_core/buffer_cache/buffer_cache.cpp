@@ -93,6 +93,11 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
                        reqs.memoryTypeBits)
             .value();
 
+    arena_memory_type_bits = reqs.memoryTypeBits;
+    // Limit allocation and granule overcommit on small memory budgets, including iGPUs.
+    residency_chunk_size = std::max<u64>(
+        block_size, instance.GetTotalMemoryBudget() <= 4_GB ? 64_MB : RESIDENCY_CHUNK_SIZE);
+
     const u64 bda_pagetable_size =
         (blocks_per_arena_page * NUM_ARENA_PAGES) * sizeof(vk::DeviceAddress);
     fault_manager = std::make_unique<FaultManager>(instance, scheduler, *this, block_shift,
@@ -874,7 +879,9 @@ const Buffer* BufferCache::GetArena(u64 first_block, u64 last_block) {
 
 void BufferCache::EnsureResident(const Buffer* arena, u64 first_block, u64 last_block) {
     // Granules never cross an arena page, so the widened range stays within the arena.
-    const u64 granule_blocks = std::max<u64>(RESIDENCY_GRANULE_SIZE >> block_shift, 1);
+    const u64 granule_size = instance.GetTotalMemoryBudget() <= 4_GB
+                                 ? block_size : RESIDENCY_GRANULE_SIZE;
+    const u64 granule_blocks = std::max<u64>(granule_size >> block_shift, 1);
     const u64 bind_first = Common::AlignDown(first_block, granule_blocks);
     const u64 bind_end = Common::AlignUp(last_block + 1, granule_blocks);
 
@@ -914,32 +921,36 @@ void BufferCache::EnsureResident(const Buffer* arena, u64 first_block, u64 last_
     ArenaBinds* binds = BindsForArena(arena);
     auto* bda_addrs = reinterpret_cast<vk::DeviceAddress*>(staging.mapped);
     u64 offset = staging.offset;
+    const u64 max_blocks = residency_chunk_size >> block_shift;
     for (const auto& range : bind_ranges) {
-        const u64 range_size = (range.end - range.start) << block_shift;
-        const auto [device_memory, memory_offset] = AllocateResidency(range_size);
+        // Sparse bindings need not use one physical allocation for the whole range.
+        for (u64 start = range.start; start < range.end;) {
+            const u64 end = std::min(range.end, start + max_blocks);
+            const u64 range_size = (end - start) << block_shift;
+            const auto [device_memory, memory_offset] = AllocateResidency(range_size);
 
-        Backing backing;
-        backing.start = range.start;
-        backing.end = range.end;
-        backing.memory = device_memory;
-        backing.offset = memory_offset >> block_shift;
-        resident_ranges.Add(backing);
+            Backing backing;
+            backing.start = start;
+            backing.end = end;
+            backing.memory = device_memory;
+            backing.offset = memory_offset >> block_shift;
+            resident_ranges.Add(backing);
 
-        LOG_DEBUG(Render, "Making range start={}, end={} resident", backing.start, backing.end);
-
-        const auto& bind = binds->binds.emplace_back(vk::SparseMemoryBind{
-            .resourceOffset = (range.start << block_shift) - arena->cpu_addr,
-            .size = range_size,
-            .memory = device_memory,
-            .memoryOffset = memory_offset,
-        });
-
-        for (u32 block = 0; block < bind.size; block += block_size) {
-            *(bda_addrs++) = arena->BufferDeviceAddress() + bind.resourceOffset + block;
+            LOG_DEBUG(Render, "Making range start={}, end={} resident", start, end);
+            const auto& bind = binds->binds.emplace_back(vk::SparseMemoryBind{
+                .resourceOffset = (start << block_shift) - arena->cpu_addr,
+                .size = range_size,
+                .memory = device_memory,
+                .memoryOffset = memory_offset,
+            });
+            for (u64 block = 0; block < bind.size; block += block_size) {
+                *(bda_addrs++) = arena->BufferDeviceAddress() + bind.resourceOffset + block;
+            }
+            const u64 copy_size = (end - start) * sizeof(vk::DeviceAddress);
+            copies.emplace_back(offset, start * sizeof(vk::DeviceAddress), copy_size);
+            offset += copy_size;
+            start = end;
         }
-        const u64 copy_size = (backing.end - backing.start) * sizeof(vk::DeviceAddress);
-        copies.emplace_back(offset, backing.start * sizeof(vk::DeviceAddress), copy_size);
-        offset += copy_size;
     }
 
     staging.Flush();
@@ -947,26 +958,78 @@ void BufferCache::EnsureResident(const Buffer* arena, u64 first_block, u64 last_
 }
 
 std::pair<vk::DeviceMemory, u64> BufferCache::AllocateResidency(u64 size) {
-    const auto allocate = [this](u64 allocation_size) {
-        const vk::MemoryAllocateInfo alloc_info = {
-            .allocationSize = allocation_size,
-            .memoryTypeIndex = arena_memory_type_index,
-        };
-        return Vulkan::Check(instance.GetDevice().allocateMemory(alloc_info));
+    ASSERT_MSG(size != 0 && size <= residency_chunk_size && size % block_size == 0,
+               "Invalid sparse backing request of {} bytes", size);
+    if (residency_chunk && residency_chunk_used + size <= residency_chunk_capacity) {
+        const u64 offset = residency_chunk_used;
+        residency_chunk_used += size;
+        return {residency_chunk, offset};
+    }
+
+    const auto& properties = instance.GetMemoryProperties();
+    const vk::MemoryAllocateFlagsInfo alloc_flags = {
+        .flags = vk::MemoryAllocateFlagBits::eDeviceAddress,
     };
-    // Ranges keep coming as the game streams data in. Carving them out of large chunks keeps the
-    // driver from allocating memory each time, which is slow and limited to a few thousand
-    // allocations on some drivers. Large ranges get their own.
-    if (size > RESIDENCY_CHUNK_SIZE / 4) {
-        return {allocate(size), 0};
+    const auto try_allocate = [&](u64 bytes, u32 memory_type) {
+        const vk::MemoryAllocateInfo alloc_info = {
+            .pNext = &alloc_flags,
+            .allocationSize = bytes,
+            .memoryTypeIndex = memory_type,
+        };
+        auto result = instance.GetDevice().allocateMemory(alloc_info);
+        if (result.result != vk::Result::eSuccess) {
+            const u32 heap = properties.memoryTypes[memory_type].heapIndex;
+            LOG_WARNING(Render_Vulkan,
+                        "Sparse backing allocation failed: {} bytes, type {}, heap {}, "
+                        "heap size {} bytes, result {}",
+                        bytes, memory_type, heap, properties.memoryHeaps[heap].size,
+                        vk::to_string(result.result));
+            ASSERT_MSG(result.result == vk::Result::eErrorOutOfDeviceMemory,
+                       "Sparse backing allocation failed with {}", vk::to_string(result.result));
+        }
+        return result;
+    };
+
+    u64 capacity = residency_chunk_size;
+    auto result = try_allocate(capacity, arena_memory_type_index);
+    if (result.result == vk::Result::eErrorOutOfDeviceMemory && capacity > size) {
+        // Do not abort just because the preferred pool chunk exceeds available memory.
+        capacity = size;
+        result = try_allocate(capacity, arena_memory_type_index);
     }
-    if (!residency_chunk || residency_chunk_used + size > RESIDENCY_CHUNK_SIZE) {
-        residency_chunk = allocate(RESIDENCY_CHUNK_SIZE);
-        residency_chunk_used = 0;
+    if (result.result == vk::Result::eErrorOutOfDeviceMemory) {
+        capacity = size;
+        // Try compatible system-memory heaps. GPU accesses still use the same sparse
+        // buffer addresses; no resident data is discarded or copied back prematurely.
+        for (u32 type = 0; type < properties.memoryTypeCount; ++type) {
+            const auto& memory_type = properties.memoryTypes[type];
+            if (((arena_memory_type_bits >> type) & 1U) == 0 ||
+                type == arena_memory_type_index ||
+                bool(properties.memoryHeaps[memory_type.heapIndex].flags &
+                     vk::MemoryHeapFlagBits::eDeviceLocal) ||
+                !bool(memory_type.propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible) ||
+                bool(memory_type.propertyFlags & (vk::MemoryPropertyFlagBits::eProtected |
+                                                 vk::MemoryPropertyFlagBits::eLazilyAllocated))) {
+                continue;
+            }
+            result = try_allocate(capacity, type);
+            if (result.result == vk::Result::eSuccess) {
+                LOG_WARNING(Render_Vulkan,
+                            "Sparse backing using system memory: {} bytes, type {}. "
+                            "GPU performance may decrease.", capacity, type);
+                break;
+            }
+        }
     }
-    const u64 offset = residency_chunk_used;
-    residency_chunk_used += size;
-    return {residency_chunk, offset};
+    ASSERT_MSG(result.result == vk::Result::eSuccess,
+               "Failed allocating sparse backing: {} bytes requested, {} bytes attempted, "
+               "local type {}, compatible types {:#x}, result {}",
+               size, capacity, arena_memory_type_index, arena_memory_type_bits,
+               vk::to_string(result.result));
+    residency_chunk = result.value;
+    residency_chunk_capacity = capacity;
+    residency_chunk_used = size;
+    return {residency_chunk, 0};
 }
 
 bool BufferCache::SynchronizeMemory(const Buffer* arena, VAddr device_addr, u32 size,
