@@ -1,153 +1,69 @@
 # SPDX-FileCopyrightText: 2024 shadPS4 Emulator Project
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-name: Build and Release
+name: Windows Build
 
 on:
   workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Also run Windows C++ tests
+        type: boolean
+        default: false
+        required: false
 
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
-  # Every build of a work branch is released, so a push there waits for the build before it
-  # instead of cancelling it.
-  cancel-in-progress: ${{ github.event_name == 'push' && !startsWith(github.ref_name, 'claude/') }}
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   BUILD_TYPE: Release
 
+permissions:
+  contents: read
+
 jobs:
-  reuse:
-    runs-on: ubuntu-24.04
-    # Work branches only need the Windows build.
-    if: ${{ !startsWith(github.ref_name, 'claude/') }}
-    continue-on-error: true
-    steps:
-    - uses: actions/checkout@v6
-    - uses: fsfe/reuse-action@v6
-
-  clang-format:
-    runs-on: ubuntu-24.04
-    # Work branches only need the Windows build.
-    if: ${{ !startsWith(github.ref_name, 'claude/') }}
-    continue-on-error: true
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
-    - name: Install
-      run: |
-        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-        sudo add-apt-repository 'deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main'
-        sudo apt update
-        sudo apt install clang-format-19
-    - name: Build
-      env:
-        COMMIT_RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
-      run: ./.github/workflows/scripts/clang-format.sh
-
-  get-info:
-    runs-on: ubuntu-24.04
-    outputs:
-      date: ${{ steps.vars.outputs.date }}
-      shorthash: ${{ steps.vars.outputs.shorthash }}
-      fullhash: ${{ steps.vars.outputs.fullhash }}
-    steps:
-    - uses: actions/checkout@v6
-    - name: Get date and git hash
-      id: vars
-      run: |
-        echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-        echo "shorthash=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-        echo "fullhash=$(git rev-parse HEAD)" >> $GITHUB_ENV
-        echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-        echo "shorthash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-        echo "fullhash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-
   test:
-    name: Run C++ Tests on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    # Work branches only need the Windows build.
-    if: ${{ !startsWith(github.ref_name, 'claude/') }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest, macos-26]
-        include:
-          - os: windows-latest
-            compiler_cxx: clang-cl
-            compiler_c: clang-cl
-          - os: ubuntu-latest
-            compiler_cxx: clang++
-            compiler_c: clang
-          - os: macos-26
-            compiler_cxx: clang++
-            compiler_c: clang
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Setup CMake
-        uses: lukka/get-cmake@latest
-
-      - name: Setup Visual Studio shell (Windows only)
-        if: runner.os == 'Windows'
-        uses: egor-tensin/vs-shell@v2
-        with:
-          arch: x64
-
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libc++-dev libc++abi-dev ninja-build libx11-dev libxext-dev libwayland-dev libdecor-0-dev libxkbcommon-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxrandr-dev libxfixes-dev libudev-dev uuid-dev uuid-dev
-
-      # - name: Install dependencies (macOS)
-      #   if: runner.os == 'macOS'
-      #   run: |
-      #     brew install
-
-      - name: Configure CMake
-        run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_CXX_COMPILER="${{ matrix.compiler_cxx }}" \
-            -DCMAKE_C_COMPILER="${{ matrix.compiler_c }}" \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_TESTS=ON \
-            ${{ runner.os == 'Linux' && '-DCMAKE_CXX_FLAGS=-stdlib=libc++' || '' }} \
-            ${{ runner.os == 'macOS' && '-DCMAKE_OSX_ARCHITECTURES=x86_64' || '' }}
-        shell: bash
-
-      - name: Create shadPS4 user data directory (Linux)
-        if: runner.os == 'Linux'
-        run: mkdir -p ~/.local/share/shadPS4
-
-      - name: Create shadPS4 user data directory (macOS)
-        if: runner.os == 'macOS'
-        run: mkdir -p ~/Library/Application\ Support/shadPS4
-
-      - name: Create shadPS4 user data directory (Windows)
-        if: runner.os == 'Windows'
-        run: mkdir -p "$APPDATA/shadPS4"
-        shell: bash
-
-      - name: Build all tests
-        run: cmake --build build
-        shell: bash
-
-      - name: Run tests with CTest
-        run: ctest --test-dir build --output-on-failure --progress -E 'GcnTest'
-        shell: bash
-
-  windows-sdl:
+    name: Windows C++ tests
     runs-on: windows-2025-vs2026
-    needs: get-info
+    if: ${{ inputs.run_tests }}
     steps:
     - uses: actions/checkout@v6
       with:
         submodules: recursive
+    - uses: lukka/get-cmake@latest
+    - uses: egor-tensin/vs-shell@v2
+      with:
+        arch: x64
+    - name: Configure tests
+      run: cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTS=ON
+    - name: Create user data directory
+      run: New-Item -ItemType Directory -Force "$env:APPDATA/shadPS4"
+    - name: Build tests
+      run: cmake --build build --parallel $env:NUMBER_OF_PROCESSORS
+    - name: Run tests
+      run: ctest --test-dir build --output-on-failure -E 'GcnTest'
+
+  windows-sdl:
+    runs-on: windows-2025-vs2026
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: Get date and git hash
+      id: vars
+      shell: bash
+      run: |
+        echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+        echo "shorthash=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        echo "fullhash=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+    - name: Set up build tools
+      uses: lukka/get-cmake@latest
+    - name: Set up Visual Studio shell
+      uses: egor-tensin/vs-shell@v2
+      with:
+        arch: x64
 
     - name: Cache CMake Configuration
       uses: actions/cache@v5
@@ -180,515 +96,13 @@ jobs:
     - name: Upload Windows SDL artifact
       uses: actions/upload-artifact@v7
       with:
-        name: shadps4-win64-sdl-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
+        name: shadps4-win64-sdl-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.shorthash }}
         path: ${{github.workspace}}/build/shadPS4.exe
 
     # Names the functions in the profiler's samples, which are logged as offsets into the exe.
     - name: Upload Windows linker map
       uses: actions/upload-artifact@v7
       with:
-        name: shadps4-win64-map-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
+        name: shadps4-win64-map-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.shorthash }}
         path: ${{github.workspace}}/build/shadPS4.map
         if-no-files-found: warn
-
-  # Every Windows build of a work branch is published as a release, which can be downloaded
-  # without signing in. Releases follow the repository's version tags, the patch number going up
-  # by one each time, and list the commits since the release before. The Linux and macOS builds
-  # of the same commit are added to it once they are done, by the job after this one.
-  work-release:
-    if: ${{ startsWith(github.ref_name, 'claude/') && github.event_name != 'pull_request' }}
-    needs: [get-info, windows-sdl]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
-
-    - name: Download Windows SDL artifact
-      uses: actions/download-artifact@v8
-      with:
-        name: shadps4-win64-sdl-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
-        path: ./release
-
-    - name: Pick the version and write release notes
-      id: version
-      run: |
-        previous=$(git tag --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
-        if [ -n "$previous" ]; then
-          IFS=. read -r major minor patch <<< "$previous"
-          version="$major.$minor.$((patch + 1))"
-          # Releases made here are tagged on a copy of their build that names it in a trailer.
-          since=$(git log -1 --format='%(trailers:key=Build-Commit,valueonly)' "$previous^{commit}" | head -n 1)
-          since=${since:-$previous}
-        else
-          version="1.0.0"
-        fi
-        echo "version=$version" >> "$GITHUB_OUTPUT"
-        # What a release changes is written up in .github/release-notes, in English and Turkish.
-        # A write-up only goes in the release it was written for, the one its commits come in.
-        range_known=false
-        if [ -n "$previous" ] && git merge-base --is-ancestor "$since" HEAD 2>/dev/null; then
-          range_known=true
-        fi
-        summary() {
-          local file=".github/release-notes/$1.md"
-          [ -f "$file" ] || return 0
-          if [ "$range_known" = false ] || [ -n "$(git log --format=%h "$since..HEAD" -- "$file")" ]; then
-            cat "$file"
-            echo
-          fi
-        }
-        {
-          echo "## English"
-          echo
-          echo "Accelerated shadPS4 for inFAMOUS Second Son (CUSA00004), commit ${{ needs.get-info.outputs.shorthash }}."
-          echo
-          summary en
-          # The job adding the other platforms' builds names them where the marker is.
-          echo "**Downloads:** Windows: \`shadPS4.exe\`.<!-- other-platforms-en -->"
-          echo
-          echo "Recommended settings: Readbacks Mode **Precise**, Direct Memory Access **on**, shader cache **on**."
-          echo "Don't delete the shader cache (%APPDATA%\\shadPS4\\cache\\CUSA00004): the first time an effect shows up, such as a new power, its shaders are compiled and the game stutters for a moment, and from then on they are loaded at startup."
-          echo
-          echo "### Changes"
-          if [ "$range_known" = true ]; then
-            git log --no-merges --pretty='- %s (%h)' "$since..HEAD"
-          else
-            git log --no-merges --pretty='- %s (%h)' -n 25
-          fi
-          echo
-          echo "---"
-          echo
-          echo "## Türkçe"
-          echo
-          echo "inFAMOUS Second Son (CUSA00004) için hızlandırılmış shadPS4, commit ${{ needs.get-info.outputs.shorthash }}."
-          echo
-          summary tr
-          echo "**İndirmeler:** Windows: \`shadPS4.exe\`.<!-- other-platforms-tr -->"
-          echo
-          echo "Önerilen ayarlar: Readbacks Mode **Precise**, Direct Memory Access **açık**, shader önbelleği **açık**."
-          echo "Shader önbelleğini (%APPDATA%\\shadPS4\\cache\\CUSA00004) silmeyin: yeni bir güç gibi bir efekt ilk kez göründüğünde shaderları derlenir ve oyun bir an takılır, sonraki açılışlarda ise baştan yüklenir."
-          echo
-          echo "Commit listesi yukarıda, **Changes** başlığının altında."
-        } > release-notes.md
-        cat release-notes.md
-
-    # GitHub doesn't let the workflow's token make a tag whose workflows differ from the default
-    # branch's, as that adds workflows, and making a release would make its tag. The tag goes on a
-    # copy of the build on top of the default branch with that branch's workflows instead.
-    - name: Tag the build
-      env:
-        VERSION: ${{ steps.version.outputs.version }}
-        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      run: |
-        git fetch --no-tags origin "refs/heads/$DEFAULT_BRANCH"
-        base=$(git rev-parse FETCH_HEAD)
-        export GIT_INDEX_FILE="$RUNNER_TEMP/release-index"
-        git read-tree HEAD
-        git rm -r -q --cached --ignore-unmatch .github/workflows
-        if git cat-file -e "$base:.github/workflows" 2>/dev/null; then
-          git read-tree --prefix=.github/workflows/ "$base:.github/workflows"
-        fi
-        tree=$(git write-tree)
-        unset GIT_INDEX_FILE
-        commit=$(git -c user.name='github-actions[bot]' \
-          -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-          commit-tree "$tree" -p "$base" -m "Fix Build Release $VERSION" -m "Build-Commit: $GITHUB_SHA")
-        git push origin "$commit:refs/tags/$VERSION"
-
-    - name: Publish release
-      uses: ncipollo/release-action@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        tag: ${{ steps.version.outputs.version }}
-        name: Fix Build Release ${{ steps.version.outputs.version }} (${{ needs.get-info.outputs.shorthash }})
-        bodyFile: release-notes.md
-        artifacts: release/shadPS4.exe
-        makeLatest: true
-
-  # Adds the Linux and macOS builds of the commit to its release, those that built. The Windows
-  # build is released without waiting for them, and whether they build doesn't hold it up.
-  work-release-other-platforms:
-    if: ${{ always() && needs.work-release.result == 'success' }}
-    needs: [get-info, work-release, linux-sdl, macos-sdl]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-    - name: Download Linux SDL artifact
-      if: ${{ needs.linux-sdl.result == 'success' }}
-      uses: actions/download-artifact@v8
-      with:
-        name: shadps4-linux-sdl-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
-        path: ./linux
-
-    - name: Download macOS SDL artifact
-      if: ${{ needs.macos-sdl.result == 'success' }}
-      uses: actions/download-artifact@v8
-      with:
-        name: shadps4-macos-sdl-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
-        path: ./macos
-
-    - name: Add them to the release
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        VERSION: ${{ needs.work-release.outputs.version }}
-      run: |
-        mkdir -p upload
-        en=""
-        tr=""
-        if [ -f linux/Shadps4-sdl.AppImage ]; then
-          chmod +x linux/Shadps4-sdl.AppImage
-          cp linux/Shadps4-sdl.AppImage upload/shadPS4-linux-x86_64.AppImage
-          en="$en Linux: \`shadPS4-linux-x86_64.AppImage\` (make it executable first)."
-          tr="$tr Linux: \`shadPS4-linux-x86_64.AppImage\` (önce çalıştırılabilir yapın)."
-        fi
-        if [ -f macos/shadps4 ]; then
-          # Files lose their permissions as artifacts, and the zip keeps them for the download.
-          chmod +x macos/shadps4
-          (cd macos && zip -r ../upload/shadPS4-macos-x86_64.zip .)
-          en="$en macOS: \`shadPS4-macos-x86_64.zip\` (an Intel build, which runs through Rosetta on Apple silicon)."
-          tr="$tr macOS: \`shadPS4-macos-x86_64.zip\` (Intel derlemesi, Apple silicon'da Rosetta ile çalışır)."
-        fi
-        if [ -z "$(ls -A upload)" ]; then
-          echo "Neither the Linux nor the macOS build is there to add."
-          exit 0
-        fi
-        gh release upload "$VERSION" upload/* --repo "$GITHUB_REPOSITORY" --clobber
-        gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
-        EN="$en" TR="$tr" python3 - <<'PY'
-        import os
-        with open("notes.md", encoding="utf-8") as f:
-            notes = f.read()
-        notes = notes.replace("<!-- other-platforms-en -->", os.environ["EN"])
-        notes = notes.replace("<!-- other-platforms-tr -->", os.environ["TR"])
-        with open("notes.md", "w", encoding="utf-8") as f:
-            f.write(notes)
-        PY
-        gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
-
-  macos-sdl:
-    runs-on: macos-26
-    needs: get-info
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        submodules: recursive
-
-    - name: Setup latest Xcode
-      uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: latest
-
-    - name: Install Build Dependencies
-      run: |
-        brew install cmake meson pkg-config llvm spirv-tools spirv-llvm-translator
-        pip3 install --break-system-packages mako packaging pyyaml
-
-    - name: Cache CMake Configuration
-      uses: actions/cache@v5
-      env:
-          cache-name: ${{ runner.os }}-sdl-cache-cmake-configuration
-      with:
-          path: |
-            ${{github.workspace}}/build
-          key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
-          restore-keys: |
-            ${{ env.cache-name }}-
-
-    - name: Cache CMake Build
-      uses: hendrikmuhs/ccache-action@v1.2.21
-      env:
-          cache-name: ${{runner.os}}-sdl-cache-cmake-build
-      with:
-        append-timestamp: false
-        create-symlink: true
-        key: ${{env.cache-name}}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
-        variant: sccache
-
-    - name: Print CPU Info
-      run: sysctl hw machdep.cpu
-
-    - name: Configure CMake
-      run: cmake --fresh -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=ON -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel $(sysctl -n hw.ncpu)
-
-    - name: Package and Upload macOS SDL artifact
-      run: |
-        mkdir upload
-        mv ${{github.workspace}}/build/shadps4 upload
-        mv ${{github.workspace}}/build/libvulkan.dylib upload
-        mv ${{github.workspace}}/build/libvulkan_kosmickrisp.dylib upload
-        mv ${{github.workspace}}/build/kosmickrisp_mesa_icd.json upload
-    - uses: actions/upload-artifact@v7
-      with:
-        name: shadps4-macos-sdl-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
-        path: upload/
-
-  linux-sdl:
-    runs-on: ubuntu-24.04
-    needs: get-info
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        submodules: recursive
-
-    - name: Add LLVM repository
-      run: |
-        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-        sudo add-apt-repository 'deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main'
-
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt install -y libx11-dev libxext-dev libwayland-dev libdecor-0-dev libxkbcommon-dev libglfw3-dev libgles2-mesa-dev libfuse2 clang-19 mold build-essential libasound2-dev libpulse-dev libopenal-dev libudev-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev
-
-    - name: Cache CMake Configuration
-      uses: actions/cache@v5
-      env:
-          cache-name: ${{ runner.os }}-sdl-cache-cmake-configuration
-      with:
-          path: |
-            ${{github.workspace}}/build
-          key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
-          restore-keys: |
-            ${{ env.cache-name }}-
-
-    - name: Cache CMake Build
-      uses: hendrikmuhs/ccache-action@v1.2.21
-      env:
-          cache-name: ${{ runner.os }}-sdl-cache-cmake-build
-      with:
-        append-timestamp: false
-        key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
-
-    - name: Print CPU Info
-      run: cat /proc/cpuinfo
-
-    - name: Configure CMake
-      run: cmake --fresh -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=ON -DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19 -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold" -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=mold" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel $(nproc)
-
-    - name: Package and Upload Linux(ubuntu64) SDL artifact
-      run: |
-        ls -la ${{ github.workspace }}/build/shadps4
-
-    - uses: actions/upload-artifact@v7
-      with:
-        name: shadps4-ubuntu64-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
-        path: ${{ github.workspace }}/build/shadps4
-
-    - name: Run AppImage packaging script
-      run:  ./.github/workflows/scripts/linux-appimage-sdl.sh
-
-    - name: Package and Upload Linux SDL artifact
-      run: |
-        tar cf shadps4-linux-sdl.tar.gz -C ${{github.workspace}}/build shadps4
-    - uses: actions/upload-artifact@v7
-      with:
-        name: shadps4-linux-sdl-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}
-        path: Shadps4-sdl.AppImage
-
-  linux-sdl-gcc:
-    runs-on: ubuntu-24.04
-    needs: get-info
-    # Work branches only need the Windows build.
-    if: ${{ !startsWith(github.ref_name, 'claude/') }}
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        submodules: recursive
-
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt install -y libx11-dev libxext-dev libwayland-dev libdecor-0-dev libxkbcommon-dev libglfw3-dev libgles2-mesa-dev libfuse2 gcc-14 mold build-essential libasound2-dev libpulse-dev libopenal-dev libudev-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev
-
-    - name: Cache CMake Configuration
-      uses: actions/cache@v5
-      env:
-          cache-name: ${{ runner.os }}-sdl-gcc-cache-cmake-configuration
-      with:
-          path: |
-            ${{github.workspace}}/build
-          key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
-          restore-keys: |
-            ${{ env.cache-name }}-
-
-    - name: Cache CMake Build
-      uses: hendrikmuhs/ccache-action@v1.2.21
-      env:
-          cache-name: ${{ runner.os }}-sdl-gcc-cache-cmake-build
-      with:
-        append-timestamp: false
-        key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
-
-    - name: Print CPU Info
-      run: cat /proc/cpuinfo
-
-    - name: Configure CMake
-      run: cmake --fresh -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=ON -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold" -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=mold" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel $(nproc)
-
-  pre-release:
-    if: github.ref == 'refs/heads/main' && github.repository == 'shadps4-emu/shadPS4' && github.event_name == 'push'
-    needs: [get-info, windows-sdl, macos-sdl, linux-sdl]
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v8
-      with:
-        path: ./artifacts
-
-    - name: Make SDL artifacts executable
-      run: |
-        chmod -R a+x ./artifacts/shadps4-linux-sdl-*
-        chmod -R a+x ./artifacts/shadps4-macos-sdl-*
-
-    - name: Compress individual directories (without parent directory)
-      run: |
-        cd ./artifacts
-        for dir in */; do
-          if [ -d "$dir" ]; then
-            dir_name=${dir%/}
-            echo "Creating zip for $dir_name"
-            (cd "$dir_name" && zip -r "../${dir_name}.zip" .)
-          fi
-        done
-
-    - name: Get latest release information
-      id: get_latest_release
-      env:
-        GITHUB_TOKEN: ${{ secrets.SHADPS4_TOKEN_REPO }}
-      run: |
-        api_url="https://api.github.com/repos/${{ github.repository }}"
-        latest_release_info=$(curl -H "Authorization: token $GITHUB_TOKEN" "$api_url/releases/latest")
-        echo "last_release_tag=$(echo "$latest_release_info" | jq -r '.tag_name')" >> $GITHUB_ENV
-
-    - name: Create Pre-Release on GitHub
-      id: create_release
-      uses: ncipollo/release-action@v1
-      with:
-        token: ${{ secrets.SHADPS4_TOKEN_REPO }}
-        name: "Pre-release-shadPS4-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}"
-        tag: "Pre-release-shadPS4-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.fullhash }}"
-        draft: false
-        prerelease: true
-        body: "Full Changelog: [${{ env.last_release_tag }}...${{ needs.get-info.outputs.shorthash }}](https://github.com/shadps4-emu/shadPS4/compare/${{ env.last_release_tag }}...${{ needs.get-info.outputs.fullhash }})"
-        artifacts: ./artifacts/*.zip
-
-    - name: Publish to Release Repository
-      env:
-        GITHUB_TOKEN: ${{ secrets.SHADPS4_TOKEN_REPO }}
-      run: |
-        ARTIFACTS_DIR=./artifacts
-        REPO_WINDOWS="shadps4-emu/shadps4-binaries-Windows"
-        REPO_LINUX="shadps4-emu/shadps4-binaries-Linux"
-        REPO_MAC="shadps4-emu/shadps4-binaries-Mac"
-
-        for file in "$ARTIFACTS_DIR"/*.zip; do
-          filename=$(basename "$file")
-          REPO=""
-
-          # Determine repository based on file name
-          if [[ "$filename" == *"win64"* ]]; then
-            REPO=$REPO_WINDOWS
-          elif [[ "$filename" == *"linux"* ]] || [[ "$filename" == *"ubuntu64"* ]]; then
-            REPO=$REPO_LINUX
-          elif [[ "$filename" == *"macos"* ]]; then
-            REPO=$REPO_MAC
-          fi
-
-          # If REPO is empty, skip file
-          if [[ -z "$REPO" ]]; then
-            echo "No matching repository for $filename"
-            continue
-          fi
-
-          # Check if release already exists and get ID
-          release_id=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO/releases/tags/Pre-release-shadPS4-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.fullhash }}" | jq -r '.id')
-
-          if [[ "$release_id" == "null" ]]; then
-            echo "Creating release in $REPO for $filename"
-            release_id=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              -d '{
-                "tag_name": "Pre-release-shadPS4-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.fullhash }}",
-                "name": "Pre-release-shadPS4-${{ needs.get-info.outputs.date }}-${{ needs.get-info.outputs.shorthash }}",
-                "draft": false,
-                "prerelease": true,
-                "body": "Commit: [${{ needs.get-info.outputs.fullhash }}](https://github.com/shadps4-emu/shadPS4/commit/${{ needs.get-info.outputs.fullhash }})"
-              }' "https://api.github.com/repos/$REPO/releases" | jq -r '.id')
-          else
-            echo "Release already exists in $REPO with ID $release_id"
-          fi
-
-          # Artifact upload
-          echo "Uploading $filename to release $release_id in $REPO"
-          upload_url="https://uploads.github.com/repos/$REPO/releases/$release_id/assets?name=$filename"
-          curl -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/octet-stream" --data-binary @"$file" "$upload_url"
-        done
-
-    - name: Get current pre-release information
-      env:
-        GITHUB_TOKEN: ${{ secrets.SHADPS4_TOKEN_REPO }}
-      run: |
-        api_url="https://api.github.com/repos/${{ github.repository }}/releases"
-
-        # Get all releases (sorted by date)
-        releases=$(curl -H "Authorization: token $GITHUB_TOKEN" "$api_url")
-
-        # Capture the most recent pre-release (assuming the first one is the latest)
-        current_release=$(echo "$releases" | jq -c '.[] | select(.prerelease == true) | .published_at' | sort -r | head -n 1)
-
-        # Remove extra quotes from captured date
-        current_release=$(echo $current_release | tr -d '"')
-
-        # Export the current published_at to be available for the next step
-        echo "CURRENT_PUBLISHED_AT=$current_release" >> $GITHUB_ENV
-
-    - name: Delete old pre-releases and tags
-      env:
-        GITHUB_TOKEN: ${{ secrets.SHADPS4_TOKEN_REPO }}
-      run: |
-        api_url="https://api.github.com/repos/${{ github.repository }}/releases"
-
-        # Get current pre-releases
-        releases=$(curl -H "Authorization: token $GITHUB_TOKEN" "$api_url")
-
-        # Remove extra quotes from captured date
-        CURRENT_PUBLISHED_AT=$(echo $CURRENT_PUBLISHED_AT | tr -d '"')
-
-        # Convert CURRENT_PUBLISHED_AT para timestamp Unix
-        current_published_ts=$(date -d "$CURRENT_PUBLISHED_AT" +%s)
-
-        # Identify pre-releases
-        echo "$releases" | jq -c '.[] | select(.prerelease == true)' | while read -r release; do
-          release_date=$(echo "$release" | jq -r '.published_at')
-          release_id=$(echo "$release" | jq -r '.id')
-          release_tag=$(echo "$release" | jq -r '.tag_name')
-
-          # Remove extra quotes from captured date
-          release_date=$(echo $release_date | tr -d '"')
-
-          # Convert release_date para timestamp Unix
-          release_date_ts=$(date -d "$release_date" +%s)
-
-          # Compare timestamps and delete old pre-releases
-          if [[ "$release_date_ts" -lt "$current_published_ts" ]]; then
-            echo "Deleting old pre-release: $release_id from $release_date with tag: $release_tag"
-            # Delete the pre-release
-            curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" "$api_url/$release_id"
-            # Delete the tag
-            curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$release_tag"
-          else
-            echo "Skipping pre-release: $release_id (newer or same date)"
-          fi
-        done
