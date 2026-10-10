@@ -131,6 +131,11 @@ public:
         Record([=](vk::CommandBuffer cmd) { cmd.bindIndexBuffer(buffer, offset, type); });
     }
 
+    void bindIndexBuffer2KHR(vk::Buffer buffer, vk::DeviceSize offset, vk::DeviceSize size,
+                             vk::IndexType type) const {
+        Record([=](vk::CommandBuffer cmd) { cmd.bindIndexBuffer2KHR(buffer, offset, size, type); });
+    }
+
     void bindVertexBuffers(u32 first, u32 count, const vk::Buffer* buffers,
                            const vk::DeviceSize* offsets) const {
         if (!stream) {
