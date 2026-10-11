@@ -7,6 +7,7 @@
 #include <boost/container/small_vector.hpp>
 
 #include "common/assert.h"
+#include "common/perf_profiler.h"
 #include "shader_recompiler/backend/spirv/emit_spirv_discard_frag.h"
 #include "shader_recompiler/backend/spirv/emit_spirv_quad_rect.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
@@ -456,7 +457,8 @@ void GraphicsPipeline::Compile(const CompileInputs& inputs) {
         .layout = *pipeline_layout,
     };
 
-    const auto start = std::chrono::steady_clock::now();
+    const auto start = Common::Perf::Enabled ? std::chrono::steady_clock::now()
+                                             : std::chrono::steady_clock::time_point{};
     auto created = device.createGraphicsPipelineUnique(pipeline_cache, pipeline_info);
     for (u32 attempt = 1;
          RetryPipelineCreation(created.result, attempt, "graphics", inputs.debug_str); ++attempt) {

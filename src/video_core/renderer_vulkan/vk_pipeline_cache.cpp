@@ -692,15 +692,18 @@ vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::Runtim
              perm_idx != 0 ? "(permutation)" : "");
     DumpShader(code, info.pgm_hash, info.hw_stage, perm_idx, "bin");
 
-    const auto start = std::chrono::steady_clock::now();
+    const auto start = Common::Perf::Enabled ? std::chrono::steady_clock::now()
+                                             : std::chrono::steady_clock::time_point{};
     const auto ir_program = Shader::TranslateProgram(code, pools, info, runtime_info, profile);
     auto spv = Shader::Backend::SPIRV::EmitSPIRV(profile, runtime_info, ir_program, binding);
-    const auto elapsed = std::chrono::steady_clock::now() - start;
-    Common::Perf::Record(Common::Perf::Stall::ShaderTranslate,
-                         std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
-    if (elapsed >= std::chrono::milliseconds{3}) {
-        LOG_INFO(Render_Vulkan, "Translated {} shader {:#x} in {:.1f} ms", info.hw_stage,
-                 info.pgm_hash, std::chrono::duration<double, std::milli>(elapsed).count());
+    if constexpr (Common::Perf::Enabled) {
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        Common::Perf::Record(Common::Perf::Stall::ShaderTranslate,
+                             std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
+        if (elapsed >= std::chrono::milliseconds{3}) {
+            LOG_INFO(Render_Vulkan, "Translated {} shader {:#x} in {:.1f} ms", info.hw_stage,
+                     info.pgm_hash, std::chrono::duration<double, std::milli>(elapsed).count());
+        }
     }
     if ((info.uses_buffer_atomic_float_min_max && !profile.supports_buffer_fp32_atomic_min_max) ||
         (info.uses_image_atomic_float_min_max && !profile.supports_image_fp32_atomic_min_max)) {

@@ -5,6 +5,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "common/perf_profiler.h"
+
 #include "shader_recompiler/info.h"
 #include "video_core/renderer_vulkan/vk_compute_pipeline.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -113,7 +115,8 @@ ComputePipeline::ComputePipeline(const Instance& instance, Scheduler& scheduler,
             },
             .layout = *pipeline_layout,
         };
-        const auto start = std::chrono::steady_clock::now();
+        const auto start = Common::Perf::Enabled ? std::chrono::steady_clock::now()
+                                                 : std::chrono::steady_clock::time_point{};
         const auto device = this->instance.GetDevice();
         auto created =
             device.createComputePipelineUnique(this->pipeline_cache, compute_pipeline_ci);

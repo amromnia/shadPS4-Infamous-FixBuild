@@ -1246,20 +1246,23 @@ void BufferCache::SubmitPendingArenaBinds(Vulkan::SubmitInfo& info) {
     };
 
     info.AddWait(signal_sema, signal_tick);
-    const auto start = std::chrono::steady_clock::now();
+    const auto start = Common::Perf::Enabled ? std::chrono::steady_clock::now()
+                                             : std::chrono::steady_clock::time_point{};
     auto submit_result = instance.GetSparseQueue().bindSparse(sparse_info);
     ASSERT_MSG(submit_result != vk::Result::eErrorDeviceLost, "Device lost during submit");
-    const auto elapsed = std::chrono::steady_clock::now() - start;
-    Common::Perf::Record(Common::Perf::Stall::SparseBind,
-                         std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
-    if (elapsed >= std::chrono::milliseconds{2}) {
-        u64 bound_blocks{};
-        for (const auto& range : resident_ranges) {
-            bound_blocks += range.end - range.start;
+    if constexpr (Common::Perf::Enabled) {
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        Common::Perf::Record(Common::Perf::Stall::SparseBind,
+                             std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
+        if (elapsed >= std::chrono::milliseconds{2}) {
+            u64 bound_blocks{};
+            for (const auto& range : resident_ranges) {
+                bound_blocks += range.end - range.start;
+            }
+            LOG_INFO(Render, "Sparse bind took {:.1f} ms, {} MB resident in total",
+                     std::chrono::duration<double, std::milli>(elapsed).count(),
+                     (bound_blocks << block_shift) >> 20);
         }
-        LOG_INFO(Render, "Sparse bind took {:.1f} ms, {} MB resident in total",
-                 std::chrono::duration<double, std::milli>(elapsed).count(),
-                 (bound_blocks << block_shift) >> 20);
     }
 
     pending_binds.clear();

@@ -52,6 +52,9 @@ void Pipeline::WaitReady() const {
 
 void Pipeline::LogPipelineCreation(std::string_view kind, std::string_view debug_str,
                                    std::chrono::steady_clock::time_point start) const {
+    if constexpr (!Common::Perf::Enabled) {
+        return;
+    }
     // Creation this slow is worth seeing in the log, the rest only clutters it.
     constexpr auto SlowCreation = std::chrono::milliseconds{5};
 

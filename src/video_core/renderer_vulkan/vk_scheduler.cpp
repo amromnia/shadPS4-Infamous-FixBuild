@@ -837,8 +837,9 @@ void Scheduler::RecordingThread(std::stop_token stoken) {
 
     RecordingContext context{};
     while (!stoken.stop_requested()) {
-        const auto start = std::chrono::steady_clock::now();
-        if (stream->Replay(context)) {
+        const auto start = Common::Perf::Enabled ? std::chrono::steady_clock::now()
+                                                 : std::chrono::steady_clock::time_point{};
+        if (stream->Replay(context) && Common::Perf::Enabled) {
             const auto elapsed = std::chrono::steady_clock::now() - start;
             Common::Perf::Record(
                 Common::Perf::Stall::CommandRecording,
