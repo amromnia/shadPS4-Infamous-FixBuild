@@ -66,6 +66,34 @@ held contact while pressing Back/View. Repeat after lifting and touching again,
 with two fingers, and after opening an overlay or switching away from the game.
 Touchscreen motion does not implement controller gyro/shake input.
 
+## Manual click and optional automatic mode
+
+Clicking remains **manual by default**, including Second Son. Hold your existing
+`touchpad_center` binding (normally Back/View or keyboard Space) while touching
+the screen if the prompt calls for a mechanical touchpad press.
+
+Press **F1** or **Back/View + D-pad Down** to toggle automatic two-finger clicking
+for player one's touchscreen. In automatic mode, exactly two screen contacts
+also hold the PS4 touchpad-click bit. Lifting either finger releases that
+automatic click; a separately held manual click remains pressed. Single-finger
+swipes do not automatically click. This is a way to test contact-plus-click,
+not a confirmed fix for the vehicle-lift scene.
+
+The toggle resets to the configured default on restart or input reload (F8).
+To start in automatic mode, add this to your game input configuration:
+
+```ini
+touchscreen_two_finger_click = true
+```
+
+Use `false` for manual mode. The hotkey is rebindable as
+`hotkey_toggle_touchscreen_click`; an explicit `unmapped` binding suppresses
+its default shortcuts. Defaults are added to global input config when missing.
+
+Besides SDL contact logs, `Touchscreen report to game` messages now show the
+contact count, coordinates and IDs actually returned to the game, whether the
+click bit is set, hold duration, and whether emulator UI intercepted the report.
+
 ## Two-sided hold followed by an upward swipe
 
 Hold two fingers simultaneously around 20% and 80% of the game window width,

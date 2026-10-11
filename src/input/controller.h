@@ -12,6 +12,7 @@
 #include "SDL3/SDL_joystick.h"
 #include "common/assert.h"
 #include "common/ring_buffer_queue.h"
+#include "input/touchscreen_touchpad.h"
 #include "core/libraries/pad/pad.h"
 #include "core/libraries/system/userservice.h"
 
@@ -73,6 +74,7 @@ public:
     Libraries::Pad::OrbisFQuaternion orientation = {0.0f, 0.0f, 0.0f, 1.0f};
     u64 touch_time_since_held_down{};
     bool connected{};
+    bool touchscreen_active{};
     u8 connected_count{};
 };
 
@@ -118,6 +120,8 @@ public:
     void SetTouchpadState(int touchIndex, bool touchDown, float x, float y);
     void SetTouchscreenState(int touchIndex, bool touchDown, float x, float y);
     void SetMouseTouchpadState(bool touchDown, float x, float y, bool clicked);
+    void SetTouchscreenTwoFingerClick(bool enabled);
+    bool ToggleTouchscreenTwoFingerClick();
 
     float gyro_buf[3] = {0.0f, 0.0f, 0.0f}, accel_buf[3] = {0.0f, 9.81f, 0.0f};
     s32 user_id = Libraries::UserService::ORBIS_USER_SERVICE_USER_ID_INVALID;
@@ -128,6 +132,7 @@ private:
     void PushStateLocked(u64 timestamp = 0);
     void SetTouchpadStateLocked(int touchIndex, bool touchDown, float x, float y);
     std::array<bool, 2> m_touchscreen_contacts{};
+    TouchpadClickState m_touchpad_click;
     void UpdateOrientationLocked(u64 timestamp);
     void EnableMotionEmulationLocked();
     void UpdateEmulatedMotionLocked(u64 timestamp);

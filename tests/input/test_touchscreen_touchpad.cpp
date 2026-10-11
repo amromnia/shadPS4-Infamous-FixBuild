@@ -8,6 +8,21 @@
 using Pad = Input::TouchscreenTouchpad;
 using Action = Pad::Action;
 
+TEST(TouchscreenTouchpad, TwoFingerClickDoesNotCancelAManualClick) {
+    Input::TouchpadClickState click;
+    EXPECT_FALSE(click.Pressed(2)); // Contact-only by default.
+    click.two_finger_click = true;
+    EXPECT_FALSE(click.Pressed(1));
+    EXPECT_TRUE(click.Pressed(2));
+    click.manual_down = true;
+    EXPECT_TRUE(click.Pressed(1)); // Lifting a screen finger must not release a bound button.
+    click.manual_down = false;
+    EXPECT_TRUE(click.Pressed(2)); // Releasing a bound button must not cancel the screen click.
+    EXPECT_FALSE(click.Pressed(0));
+    click.two_finger_click = false;
+    EXPECT_FALSE(click.Pressed(2));
+}
+
 TEST(TouchscreenTouchpad, ContinuousSwipeAndRelease) {
     Pad pad;
     auto start = pad.Handle(Action::Down, 1, 42, 0.2f, 0.8f);

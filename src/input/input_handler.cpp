@@ -179,6 +179,7 @@ std::filesystem::path GetInputConfigFile(const std::string& game_id) {
             {"hotkey_add_virtual_user", "f5"},
             {"hotkey_remove_virtual_user", "f4"},
             {"hotkey_toggle_mouse_to_touchpad", "delete"},
+            {"hotkey_toggle_touchscreen_click", "f1"},
             {"hotkey_quit", "lctrl, lshift, end"},
             {"hotkey_volume_up", "kpplus"},
             {"hotkey_volume_down", "kpminus"},
@@ -193,10 +194,11 @@ std::filesystem::path GetInputConfigFile(const std::string& game_id) {
         // keyboard keys above are not usable on a controller. The entries below are added on top of
         // the bindings above, so that a controller can trigger the motion emulation while the
         // keyboard keeps its keys, without taking a button away from the games.
-        constexpr std::array<std::pair<std::string_view, std::string_view>, 3> motion_bindings = {{
+        constexpr std::array<std::pair<std::string_view, std::string_view>, 4> motion_bindings = {{
             {"motion_tilt_left", "back, pad_left"},
             {"motion_tilt_right", "back, pad_right"},
             {"motion_shake", "back, pad_up"},
+            {"hotkey_toggle_touchscreen_click", "back, pad_down"},
         }};
         std::string legacy_capture_binding;
         bool legacy_capture_binding_found = false;
@@ -406,6 +408,8 @@ void ParseInputConfig(const std::string game_id = "") {
     float mouse_deadzone_offset = 0.5;
     float mouse_speed = 1;
     float mouse_speed_offset = 0.125;
+    // Keep mechanical clicking manual unless explicitly enabled or toggled.
+    bool touchscreen_two_finger_click = false;
 
     // me when I'm in a type deduction tournament and my opponent is clang
     constexpr std::array<std::pair<int, int>, 4> default_deadzone = {
@@ -482,7 +486,14 @@ void ParseInputConfig(const std::string game_id = "") {
 
         // todo make override_controller_color and analog_deadzone be controller specific
         // instead of global
-        if (output_string == "mouse_to_joystick") {
+        if (output_string == "touchscreen_two_finger_click") {
+            if (input_string == "true" || input_string == "false") {
+                touchscreen_two_finger_click = input_string == "true";
+            } else {
+                LOG_WARNING(Input, "touchscreen_two_finger_click expects true or false");
+            }
+            return;
+        } else if (output_string == "mouse_to_joystick") {
             if (input_string == "left") {
                 SetMouseToJoystick(1);
             } else if (input_string == "right") {
@@ -648,6 +659,8 @@ void ParseInputConfig(const std::string game_id = "") {
         ProcessLine();
     }
     config_stream.close();
+    ControllerOutput::controllers[0]->SetTouchscreenTwoFingerClick(touchscreen_two_finger_click);
+    LOG_INFO(Input, "Touchscreen two-finger click: {}", touchscreen_two_finger_click);
     std::sort(connections.begin(), connections.end());
     for (auto& c : connections) {
         LOG_DEBUG(Input, "Binding: {} : {}", c.output->ToString(), c.binding.ToString());
@@ -819,6 +832,9 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
             break;
         case HOTKEY_TOGGLE_MOUSE_TO_TOUCHPAD:
             PushSDLEvent(SDL_EVENT_MOUSE_TO_TOUCHPAD);
+            break;
+        case HOTKEY_TOGGLE_TOUCHSCREEN_CLICK:
+            PushSDLEvent(SDL_EVENT_TOGGLE_TOUCHSCREEN_CLICK);
             break;
         case HOTKEY_RENDERDOC:
             PushSDLEvent(SDL_EVENT_RDOC_CAPTURE);

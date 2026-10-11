@@ -133,6 +133,9 @@ int GameController::ReadStates(State* states, int states_num) {
 
 void GameController::Button(OrbisPadButtonDataOffset button, bool is_pressed) {
     std::lock_guard lock{m_state_mutex};
+    if ((button & OrbisPadButtonDataOffset::TouchPad) != OrbisPadButtonDataOffset::None) {
+        m_touchpad_click.manual_down = is_pressed;
+    }
     m_state.OnButton(button, is_pressed);
     PushStateLocked();
 }
@@ -210,8 +213,21 @@ void GameController::SetMouseTouchpadState(bool touch_down, float x, float y, bo
     if (m_touchscreen_contacts[0] || m_touchscreen_contacts[1]) {
         return;
     }
-    m_state.OnButton(Libraries::Pad::OrbisPadButtonDataOffset::TouchPad, clicked);
+    m_touchpad_click.manual_down = clicked;
     SetTouchpadStateLocked(0, touch_down, x, y);
+}
+
+void GameController::SetTouchscreenTwoFingerClick(bool enabled) {
+    std::lock_guard lock{m_state_mutex};
+    m_touchpad_click.two_finger_click = enabled;
+    PushStateLocked();
+}
+
+bool GameController::ToggleTouchscreenTwoFingerClick() {
+    std::lock_guard lock{m_state_mutex};
+    m_touchpad_click.two_finger_click = !m_touchpad_click.two_finger_click;
+    PushStateLocked();
+    return m_touchpad_click.two_finger_click;
 }
 
 void GameController::SetTouchscreenState(int touch_index, bool touch_down, float x, float y) {
@@ -284,6 +300,7 @@ void GameController::DisconnectController() {
     m_emu_shake_start = 0;
     m_next_touch_id = 1;
     m_touchscreen_contacts = {};
+    m_touchpad_click.manual_down = false;
     m_touch_down_timestamp = 0;
     m_state.connected = false;
     m_last_orientation_update = 0;
@@ -395,6 +412,10 @@ void GameController::PushStateLocked(u64 timestamp) {
     UpdateEmulatedMotionLocked(timestamp);
     UpdateOrientationLocked(timestamp);
     m_state.time = timestamp;
+    const int screen_contacts = static_cast<int>(m_touchscreen_contacts[0]) +
+                                static_cast<int>(m_touchscreen_contacts[1]);
+    m_state.touchscreen_active = screen_contacts != 0;
+    m_state.OnButton(OrbisPadButtonDataOffset::TouchPad, m_touchpad_click.Pressed(screen_contacts));
     m_state.touch_time_since_held_down =
         m_touch_down_timestamp == 0 ? 0 : timestamp - m_touch_down_timestamp;
     m_states_queue.Push(m_state);

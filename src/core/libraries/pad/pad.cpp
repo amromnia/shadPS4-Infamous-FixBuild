@@ -365,6 +365,35 @@ int PS4_SYSV_ABI scePadOutputReport() {
     return ORBIS_OK;
 }
 
+// Diagnose the actual reports read by the game, rather than just SDL events.
+static void LogTouchscreenReport(const Input::State& state, const OrbisPadData& data,
+                                 bool intercepted) {
+    thread_local bool was_screen_active = false;
+    thread_local u8 previous_contacts = 0;
+    thread_local bool previous_click = false;
+    thread_local bool previous_intercepted = false;
+    thread_local u64 last_log = 0;
+    const bool clicked = (data.buttons & OrbisPadButtonDataOffset::TouchPad) !=
+                         OrbisPadButtonDataOffset::None;
+    if ((state.touchscreen_active || was_screen_active) &&
+        (data.touchData.touchNum != previous_contacts || clicked != previous_click ||
+         intercepted != previous_intercepted ||
+         (state.time >= last_log && state.time - last_log >= 1000000))) {
+        LOG_INFO(Input, "Touchscreen report to game: contacts {}, click {}, intercepted {}, "
+                        "held {} ms (reported {} us), touch0 [id {}, x {}, y {}], "
+                        "touch1 [id {}, x {}, y {}]",
+                 data.touchData.touchNum, clicked, intercepted,
+                 state.touch_time_since_held_down / 1000, data.touchData.time_since_touch_held_down,
+                 data.touchData.touch[0].id, data.touchData.touch[0].x, data.touchData.touch[0].y,
+                 data.touchData.touch[1].id, data.touchData.touch[1].x, data.touchData.touch[1].y);
+        last_log = state.time;
+    }
+    was_screen_active = state.touchscreen_active;
+    previous_contacts = data.touchData.touchNum;
+    previous_click = clicked;
+    previous_intercepted = intercepted;
+}
+
 int ProcessStates(OrbisPadData* pData, const Input::State* states, s32 num) {
     if (num > 0 && !states[0].connected) {
         pData[0] = {};
@@ -385,6 +414,7 @@ int ProcessStates(OrbisPadData* pData, const Input::State* states, s32 num) {
             pData[i].timestamp = states[i].time;
             pData[i].connectedCount = states[i].connected_count;
             pData[i].deviceUniqueDataLen = 0;
+            LogTouchscreenReport(states[i], pData[i], true);
             continue;
         }
 
@@ -424,6 +454,7 @@ int ProcessStates(OrbisPadData* pData, const Input::State* states, s32 num) {
         pData[i].timestamp = states[i].time;
         pData[i].connectedCount = states[i].connected_count;
         pData[i].deviceUniqueDataLen = 0;
+        LogTouchscreenReport(states[i], pData[i], false);
     }
 
     return num;

@@ -11,6 +11,15 @@
 
 namespace Input {
 
+struct TouchpadClickState {
+    bool manual_down{};
+    bool two_finger_click{};
+
+    bool Pressed(int screen_contacts) const {
+        return manual_down || (two_finger_click && screen_contacts == 2);
+    }
+};
+
 // SDL-independent contact tracking. Only DOWN allocates a slot, so a third finger
 // cannot become a new contact halfway through its gesture when another lifts.
 class TouchscreenTouchpad {
