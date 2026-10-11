@@ -375,7 +375,9 @@ static void LogTouchscreenReport(const Input::State& state, const OrbisPadData& 
     thread_local u64 last_log = 0;
     const bool clicked = (data.buttons & OrbisPadButtonDataOffset::TouchPad) !=
                          OrbisPadButtonDataOffset::None;
-    if ((state.touchscreen_active || was_screen_active) &&
+    // Include button-only clicks: otherwise a failed manual click leaves no
+    // evidence of whether it reached the game or was intercepted by the UI.
+    if ((state.touchscreen_active || was_screen_active || clicked || previous_click) &&
         (data.touchData.touchNum != previous_contacts || clicked != previous_click ||
          intercepted != previous_intercepted ||
          (state.time >= last_log && state.time - last_log >= 1000000))) {

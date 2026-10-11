@@ -35,3 +35,8 @@ separate. Screen contacts suppress mouse clicks, manual clicks remain usable
 during screen gestures, and leaving mouse touchpad mode releases its state.
 The supplied log does not establish whether mouse touchpad mode was active
 during the interruption. Nine focused regression tests pass.
+
+The user confirmed that button-only clicks also temporarily failed. Reports
+are now logged for manual clicks even with no touchscreen contacts, including
+release transitions, so another occurrence can distinguish missing input from
+UI interception or a game-side response failure.
