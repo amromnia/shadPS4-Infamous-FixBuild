@@ -18,6 +18,8 @@
 
 namespace Common::Perf {
 
+#if SHADPS4_ENABLE_PERF_PROFILING
+
 namespace {
 
 using Clock = std::chrono::steady_clock;
@@ -405,5 +407,31 @@ void OnFlip() {
         state.window = {};
     }
 }
+
+#else
+
+namespace {
+std::atomic<u64> tracking_frame_number{};
+}
+
+void Record(Stall, u64, u64) {}
+
+std::atomic<u64>* Detail::LocalEvents() {
+    return nullptr;
+}
+
+u64 Total(Counter) {
+    return 0;
+}
+
+u64 FrameNumber() {
+    return tracking_frame_number.load(std::memory_order_relaxed);
+}
+
+void OnFlip() {
+    tracking_frame_number.fetch_add(1, std::memory_order_relaxed);
+}
+
+#endif
 
 } // namespace Common::Perf

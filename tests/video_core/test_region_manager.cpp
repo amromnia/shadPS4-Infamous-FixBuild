@@ -230,5 +230,16 @@ TEST_F(RegionManagerTest, EntirelyGpuDirtyLookaheadDoesNotDiscardData) {
     EXPECT_EQ(cpu_modified_generation.load(std::memory_order_acquire), generation);
 }
 
+TEST(PerfAccounting, DisabledDiagnosticsKeepTheRewriteClockRunning) {
+    if constexpr (Common::Perf::Enabled) {
+        GTEST_SKIP() << "This regression covers the profiling-free build";
+    }
+    const auto before = Common::Perf::FrameNumber();
+    Common::Perf::OnFlip();
+    EXPECT_EQ(Common::Perf::FrameNumber(), before + 1);
+    Common::Perf::Count(Common::Perf::Counter::Draws);
+    EXPECT_EQ(Common::Perf::Total(Common::Perf::Counter::Draws), 0);
+}
+
 } // namespace
 } // namespace VideoCore

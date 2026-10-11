@@ -33,7 +33,7 @@
         "SHADPS4_Z1_OPTIMIZE": "ON",
         "SHADPS4_ENABLE_PERF_PROFILING": "OFF",
         "SHADPS4_READBACK_WINDOW_KIB": "1024",
-        "CMAKE_EXE_LINKER_FLAGS": "/MAP"
+        "CMAKE_EXE_LINKER_FLAGS": "/MAP /lldltocache:${sourceDir}/Build/ally-z1-lto-cache /lldltocachepolicy:cache_size_bytes=1g"
       }
     },
     {
