@@ -371,20 +371,25 @@ static void LogTouchscreenReport(const Input::State& state, const OrbisPadData& 
     thread_local bool was_screen_active = false;
     thread_local u8 previous_contacts = 0;
     thread_local bool previous_click = false;
+    thread_local bool previous_requested_click = false;
     thread_local bool previous_intercepted = false;
     thread_local u64 last_log = 0;
     const bool clicked = (data.buttons & OrbisPadButtonDataOffset::TouchPad) !=
                          OrbisPadButtonDataOffset::None;
+    const bool requested_click = (state.buttonsState & OrbisPadButtonDataOffset::TouchPad) !=
+                                 OrbisPadButtonDataOffset::None;
     // Include button-only clicks: otherwise a failed manual click leaves no
     // evidence of whether it reached the game or was intercepted by the UI.
-    if ((state.touchscreen_active || was_screen_active || clicked || previous_click) &&
+    if ((state.touchscreen_active || was_screen_active || requested_click ||
+         previous_requested_click) &&
         (data.touchData.touchNum != previous_contacts || clicked != previous_click ||
+         requested_click != previous_requested_click ||
          intercepted != previous_intercepted ||
          (state.time >= last_log && state.time - last_log >= 1000000))) {
-        LOG_INFO(Input, "Touchscreen report to game: contacts {}, click {}, intercepted {}, "
+        LOG_INFO(Input, "Touchscreen report to game: contacts {}, click {}, requested click {}, intercepted {}, "
                         "held {} ms (reported {} us), touch0 [id {}, x {}, y {}], "
                         "touch1 [id {}, x {}, y {}]",
-                 data.touchData.touchNum, clicked, intercepted,
+                 data.touchData.touchNum, clicked, requested_click, intercepted,
                  state.touch_time_since_held_down / 1000, data.touchData.time_since_touch_held_down,
                  data.touchData.touch[0].id, data.touchData.touch[0].x, data.touchData.touch[0].y,
                  data.touchData.touch[1].id, data.touchData.touch[1].x, data.touchData.touch[1].y);
@@ -393,6 +398,7 @@ static void LogTouchscreenReport(const Input::State& state, const OrbisPadData& 
     was_screen_active = state.touchscreen_active;
     previous_contacts = data.touchData.touchNum;
     previous_click = clicked;
+    previous_requested_click = requested_click;
     previous_intercepted = intercepted;
 }
 
