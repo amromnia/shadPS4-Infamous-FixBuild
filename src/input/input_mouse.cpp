@@ -130,6 +130,11 @@ void ApplyMouseInputBlockers() {
 Uint32 MousePolling(void* param, Uint32 id, Uint32 interval) {
     auto* controller = (GameController*)param;
     static bool was_gyro = false;
+    static bool was_touchpad = false;
+    if (was_touchpad && mouse_mode != MouseMode::Touchpad) {
+        controller->SetMouseTouchpadState(false, 0.0f, 0.0f, false);
+    }
+    was_touchpad = mouse_mode == MouseMode::Touchpad;
     if (was_gyro && mouse_mode != MouseMode::Gyro) {
         // Otherwise the last mouse movement keeps turning the controller after gyro mode is off
         constexpr float no_rotation[3] = {0.0f, 0.0f, 0.0f};

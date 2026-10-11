@@ -119,6 +119,22 @@ TEST(TouchscreenTouchpad, ClampCoordinatesAndCancelInvalidContact) {
     EXPECT_FLOAT_EQ(end->y, 1.0f);
 }
 
+TEST(TouchpadClick, MousePollingCannotReleaseManualClick) {
+    Input::TouchpadClickState click;
+    click.manual_down = true;
+    click.mouse_down = false;
+    EXPECT_TRUE(click.Pressed(0));
+    EXPECT_TRUE(click.Pressed(1));
+    EXPECT_TRUE(click.Pressed(2));
+    click.manual_down = false;
+    click.mouse_down = true;
+    EXPECT_TRUE(click.Pressed(0));
+    EXPECT_FALSE(click.Pressed(1));
+    EXPECT_FALSE(click.Pressed(2));
+    click.mouse_down = false;
+    EXPECT_FALSE(click.Pressed(0));
+}
+
 TEST(TouchscreenTouchpad, FocusLossReleasesBothAndIgnoresStaleEvents) {
     Pad pad;
     pad.Handle(Action::Down, 1, 1, 0.2f, 0.3f);

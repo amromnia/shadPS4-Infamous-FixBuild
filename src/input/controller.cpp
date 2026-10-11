@@ -210,10 +210,11 @@ void GameController::SetTouchpadState(int touch_index, bool touch_down, float x,
 
 void GameController::SetMouseTouchpadState(bool touch_down, float x, float y, bool clicked) {
     std::lock_guard lock{m_state_mutex};
+    // Mouse polling must never release a click held through a controller binding.
+    m_touchpad_click.mouse_down = clicked;
     if (m_touchscreen_contacts[0] || m_touchscreen_contacts[1]) {
         return;
     }
-    m_touchpad_click.manual_down = clicked;
     SetTouchpadStateLocked(0, touch_down, x, y);
 }
 
@@ -305,6 +306,7 @@ void GameController::DisconnectController() {
     m_next_touch_id = 1;
     m_touchscreen_contacts = {};
     m_touchpad_click.manual_down = false;
+    m_touchpad_click.mouse_down = false;
     m_touch_down_timestamp = 0;
     m_state.connected = false;
     m_last_orientation_update = 0;

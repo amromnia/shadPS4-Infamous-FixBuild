@@ -13,10 +13,12 @@ namespace Input {
 
 struct TouchpadClickState {
     bool manual_down{};
+    bool mouse_down{};
     bool two_finger_click{};
 
     bool Pressed(int screen_contacts) const {
-        return manual_down || (two_finger_click && screen_contacts == 2);
+        return manual_down || (mouse_down && screen_contacts == 0) ||
+               (two_finger_click && screen_contacts == 2);
     }
 };
 
