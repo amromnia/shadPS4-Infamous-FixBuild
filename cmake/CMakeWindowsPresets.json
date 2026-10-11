@@ -28,7 +28,6 @@
       "inherits": "x64-Clang-Base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_LINKER": "lld-link",
         "CMAKE_CXX_SCAN_FOR_MODULES": "OFF",
         "SHADPS4_Z1_OPTIMIZE": "ON",
         "SHADPS4_ENABLE_PERF_PROFILING": "OFF",

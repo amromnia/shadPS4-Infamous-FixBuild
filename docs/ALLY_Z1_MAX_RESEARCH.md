@@ -81,6 +81,11 @@ Primary repository README and current repository metadata were inspected:
   actively developed PS5 translation layer. Its PS5 work does not establish
   compatibility with Second Son's PS4 executable or provide a plug-in layer
   for shadPS4. No transplant was selected.
+* [SharpEmu](https://github.com/sharpemu/sharpemu): current C# PS5 project,
+  latest inspected release `v0.0.5-nexus-release.2` (`47d4c07`). Its README
+  explicitly excludes PS4 emulation and points to shadPS4 for that platform.
+  Background resource-plan compilation is conceptually relevant but not a
+  compatible patch for this C++ renderer.
 
 Some search results advertise implausibly broad PS4/PS5 compatibility; only the
 original project documentation and source were used for technical decisions.

@@ -500,6 +500,8 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
     LOG_INFO(Config, "GPU uploadThread: {}", EmulatorSettings.IsUploadThread());
     LOG_INFO(Config, "GPU syncLargeReadsOnce: {}", EmulatorSettings.IsSyncLargeReadsOnce());
     LOG_INFO(Config, "GPU asyncCompute: {}", EmulatorSettings.IsAsyncCompute());
+    LOG_INFO(Config, "Build performance profiling: {}, readback window: {} KiB",
+             SHADPS4_ENABLE_PERF_PROFILING != 0, SHADPS4_READBACK_WINDOW_KIB);
     LOG_INFO(Config, "Vulkan gpuId: {}", EmulatorSettings.GetGpuId());
     LOG_INFO(Config, "Vulkan vkValidation: {}", EmulatorSettings.IsVkValidationEnabled());
     LOG_INFO(Config, "Vulkan vkValidationCore: {}", EmulatorSettings.IsVkValidationCoreEnabled());
