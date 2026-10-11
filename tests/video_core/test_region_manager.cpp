@@ -191,5 +191,44 @@ TEST_F(RegionManagerTest, MatchesPageByPageModel) {
     }
 }
 
+TEST_F(RegionManagerTest, WriteLookaheadPreservesGpuPagesAcrossWords) {
+    CheckForEach<Type::CPU, StateOp::Clear, StateOp::None>(0, HIGHER_PAGE_SIZE);
+    // Place GPU writes on both sides of the 64-page word boundary.
+    CheckChange<StateOp::None, StateOp::Set>(63 * BYTES_PER_PAGE, 2 * BYTES_PER_PAGE);
+    const auto generation = cpu_modified_generation.load(std::memory_order_acquire);
+    manager->ExtendWriteFault(60 * BYTES_PER_PAGE, 8 * BYTES_PER_PAGE);
+    const auto protections = TakeProtections();
+    EXPECT_EQ(protections.size(), 6);
+    for (u64 page = 60; page < 68; ++page) {
+        const bool gpu_written = page == 63 || page == 64;
+        EXPECT_EQ(manager->IsRegionModified<Type::CPU>(page * BYTES_PER_PAGE, BYTES_PER_PAGE),
+                  !gpu_written);
+        EXPECT_EQ(manager->IsRegionModified<Type::GPU>(page * BYTES_PER_PAGE, BYTES_PER_PAGE),
+                  gpu_written);
+        for (const auto& [address, op] : protections) {
+            EXPECT_NE(address, Base + 63 * BYTES_PER_PAGE);
+            EXPECT_NE(address, Base + 64 * BYTES_PER_PAGE);
+            EXPECT_EQ(op, PageOp::Untrack);
+        }
+    }
+    EXPECT_GT(cpu_modified_generation.load(std::memory_order_acquire), generation);
+    // Repeating the same lookahead must not change protection or dirty generation.
+    const auto after = cpu_modified_generation.load(std::memory_order_acquire);
+    manager->ExtendWriteFault(60 * BYTES_PER_PAGE, 8 * BYTES_PER_PAGE);
+    EXPECT_TRUE(TakeProtections().empty());
+    EXPECT_EQ(cpu_modified_generation.load(std::memory_order_acquire), after);
+}
+
+TEST_F(RegionManagerTest, EntirelyGpuDirtyLookaheadDoesNotDiscardData) {
+    CheckForEach<Type::CPU, StateOp::Clear, StateOp::None>(0, HIGHER_PAGE_SIZE);
+    CheckChange<StateOp::None, StateOp::Set>(0, HIGHER_PAGE_SIZE);
+    const auto generation = cpu_modified_generation.load(std::memory_order_acquire);
+    manager->ExtendWriteFault(0, HIGHER_PAGE_SIZE);
+    EXPECT_FALSE(manager->IsRegionModified<Type::CPU>(0, HIGHER_PAGE_SIZE));
+    EXPECT_TRUE(manager->IsRegionFullyGpuModified(0, HIGHER_PAGE_SIZE));
+    EXPECT_TRUE(TakeProtections().empty());
+    EXPECT_EQ(cpu_modified_generation.load(std::memory_order_acquire), generation);
+}
+
 } // namespace
 } // namespace VideoCore

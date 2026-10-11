@@ -65,6 +65,9 @@ Scheduler::~Scheduler() {
 }
 
 void Scheduler::MeasureGpuTime() {
+    if constexpr (!Common::Perf::Enabled) {
+        return;
+    }
     const auto physical_device = instance.GetPhysicalDevice();
     const auto families = physical_device.getQueueFamilyProperties();
     const u32 family = instance.GetGraphicsQueueFamilyIndex();
@@ -103,6 +106,9 @@ void Scheduler::MeasureGpuTime() {
 }
 
 void Scheduler::CollectGpuTimes() {
+    if constexpr (!Common::Perf::Enabled) {
+        return;
+    }
     while (!submitted_timestamps.empty() &&
            work_semaphore.IsFree(submitted_timestamps.front().tick)) {
         const SubmittedTimestamps submitted = std::move(submitted_timestamps.front());
@@ -538,6 +544,9 @@ void Scheduler::PopPendingOperations() {
 }
 
 void Scheduler::MarkWorkRun(bool compute) {
+    if constexpr (!Common::Perf::Enabled) {
+        return;
+    }
     if (compute == run_compute) {
         return;
     }
@@ -559,6 +568,9 @@ void Scheduler::MarkWorkRun(bool compute) {
 
 void Scheduler::MarkDispatch(DispatchMark mark, u64 program_hash, u32 groups, bool after_draws,
                              bool compute_ring) {
+    if constexpr (!Common::Perf::Enabled) {
+        return;
+    }
     if (!sessions.back().time_dispatches) {
         return;
     }

@@ -21,6 +21,29 @@
           "intelliSenseMode": "windows-clang-x64"
         }
       }
+    },
+    {
+      "name": "ally-z1-max",
+      "displayName": "Experimental Ally Z1 O3 ThinLTO",
+      "inherits": "x64-Clang-Base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_LINKER": "lld-link",
+        "CMAKE_CXX_SCAN_FOR_MODULES": "OFF",
+        "SHADPS4_Z1_OPTIMIZE": "ON",
+        "SHADPS4_ENABLE_PERF_PROFILING": "OFF",
+        "SHADPS4_READBACK_WINDOW_KIB": "1024",
+        "CMAKE_EXE_LINKER_FLAGS": "/MAP"
+      }
+    },
+    {
+      "name": "ally-z1-diagnostic",
+      "displayName": "Ally Z1 with performance diagnostics",
+      "inherits": "ally-z1-max",
+      "cacheVariables": {
+        "SHADPS4_ENABLE_PERF_PROFILING": "ON",
+        "TRACY_ENABLE": "OFF"
+      }
     }
   ]
 }

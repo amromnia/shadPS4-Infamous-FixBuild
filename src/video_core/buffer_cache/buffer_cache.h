@@ -17,6 +17,7 @@
 #include <boost/container/small_vector.hpp>
 
 #include "common/interval_set.h"
+#include "common/perf_profiler.h"
 #include "common/types.h"
 #include "video_core/buffer_cache/buffer.h"
 #include "video_core/buffer_cache/fault_manager.h"
@@ -118,6 +119,7 @@ public:
 
     /// Invalidates any buffer in the logical page range.
     void InvalidateMemory(VAddr device_addr, u64 size, bool assume_locks = false);
+    void InvalidateMemoryAhead(VAddr device_addr, u64 size);
 
     /// Flushes any GPU modified buffer in the logical page range back to CPU memory.
     void ReadMemory(VAddr device_addr, u64 size, bool is_write = false, bool assume_locks = false);
@@ -129,6 +131,9 @@ public:
     /// Notes memory a dispatch of one of the game's compute rings writes, to tell how many of the
     /// copies back game threads wait for are of what those wrote.
     void NoteComputeRingWrite(VAddr device_addr, u64 size) {
+        if constexpr (!Common::Perf::Enabled) {
+            return;
+        }
         compute_ring_writes[compute_ring_write_index++ % compute_ring_writes.size()] = {
             device_addr, device_addr + size};
     }

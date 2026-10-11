@@ -176,6 +176,25 @@ public:
         }
     }
 
+    // Extend streaming CPU writes without discarding newer GPU data. Filtering
+    // and untracking happen under the same lock as GPU modification updates.
+    void ExtendWriteFault(u64 offset, u64 size) {
+        RegionBits write_prot;
+        RegionBits read_prot;
+        const auto bounds = GetBounds(offset, size);
+        Bounds watcher_bounds;
+        std::scoped_lock lock{mutex};
+        IterateWords(bounds, [&](u64 index, u64 mask) {
+            UpdateStateAndProtection<StateOp::Set, StateOp::None>(
+                write_prot, read_prot, index, mask & ~gpu[index]);
+        });
+        if (GetWatcherBounds(bounds, PageOp::Untrack, PageOp::None, write_prot, read_prot,
+                             watcher_bounds)) {
+            tracker->UpdatePageWatchersForRegion(cpu_addr, watcher_bounds, write_prot, read_prot,
+                                                 PageOp::Untrack, PageOp::None);
+        }
+    }
+
     template <Type type>
     bool IsRegionModified(u64 offset, u64 size) noexcept {
         auto& state = GetRegionBits<type>();

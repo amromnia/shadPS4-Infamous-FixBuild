@@ -238,6 +238,9 @@ std::string Describe(const Totals& totals) {
 } // namespace
 
 void Record(Stall stall, u64 nanoseconds, u64 bytes) {
+    if constexpr (!Enabled) {
+        return;
+    }
     auto& counters = LocalCounters();
     const auto index = static_cast<size_t>(stall);
     AddLocal(counters.nanoseconds[index], nanoseconds);
@@ -261,10 +264,18 @@ std::atomic<u64>* Detail::LocalEvents() {
 }
 
 u64 Total(Counter counter) {
+    if constexpr (!Enabled) {
+        return 0;
+    }
     return LocalCounters().events[static_cast<size_t>(counter)].load(std::memory_order_relaxed);
 }
 
 void OnFlip() {
+    if constexpr (!Enabled) {
+        // Rewrite tracking uses this clock even when diagnostics are compiled out.
+        frame_number.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
     auto& state = flip_state;
     const auto now = Clock::now();
     if (state.last_flip == Clock::time_point{}) {

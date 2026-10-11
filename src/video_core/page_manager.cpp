@@ -540,6 +540,9 @@ struct SignalImpl : public PageManager::Impl {
     /// that did, as threads filling a buffer together make. Pages are kept in a small table of
     /// the last frames' faults, which only has to be right most of the time.
     static void CountWriteFault(VAddr addr) {
+        if constexpr (!Common::Perf::Enabled) {
+            return;
+        }
         static constexpr size_t NumEntries = 8192;
         static std::array<std::atomic<u64>, NumEntries> recent{};
         const u64 frame = Common::Perf::FrameNumber() & 0xFFFF;
@@ -564,7 +567,7 @@ struct SignalImpl : public PageManager::Impl {
     /// Pages it stops short of are only uploaded again, which costs less than the faults saved.
     static void InvalidateAhead(VAddr addr) {
         static constexpr u32 MinRun = 2;
-        static constexpr u64 MaxPagesAhead = 16;
+        static constexpr u64 MaxPagesAhead = 64;
         thread_local u64 last_page = 0;
         thread_local u32 run = 0;
         const u64 page = addr >> PageManager::PM_PAGE_BITS;
@@ -574,7 +577,7 @@ struct SignalImpl : public PageManager::Impl {
             return;
         }
         const u64 pages_ahead =
-            std::min<u64>(u64{4} << std::min<u32>(run - MinRun, 2), MaxPagesAhead);
+            std::min<u64>(u64{4} << std::min<u32>(run - MinRun, 4), MaxPagesAhead);
         rasterizer->InvalidateBuffersAhead((page + 1) << PageManager::PM_PAGE_BITS,
                                            pages_ahead << PageManager::PM_PAGE_BITS);
         // The next fault of the thread going on is on the page after them.

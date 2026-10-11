@@ -13,6 +13,11 @@
 /// usual are logged with what was recorded during them, and a summary is logged every few seconds.
 namespace Common::Perf {
 
+#ifndef SHADPS4_ENABLE_PERF_PROFILING
+#define SHADPS4_ENABLE_PERF_PROFILING 0
+#endif
+inline constexpr bool Enabled = SHADPS4_ENABLE_PERF_PROFILING != 0;
+
 enum class Stall : u32 {
     ShaderTranslate,  ///< Translating guest shaders to SPIR-V on the GPU thread.
     PipelineCreate,   ///< Driver pipeline compilation outside the compiler threads.
@@ -85,6 +90,9 @@ inline thread_local std::atomic<u64>* local_events = nullptr;
 /// Counts events of a kind. The GPU thread counts a dozen for every draw, and calling out to count
 /// each took over 1% of its time, so it is done in place.
 inline void Count(Counter counter, u64 amount = 1) {
+    if constexpr (!Enabled) {
+        return;
+    }
     std::atomic<u64>* events = Detail::local_events;
     if (!events) [[unlikely]] {
         events = Detail::local_events = Detail::LocalEvents();
@@ -107,9 +115,13 @@ u64 FrameNumber();
 class ScopedStall {
 public:
     explicit ScopedStall(Stall stall_, u64 bytes_ = 0) noexcept
-        : stall{stall_}, bytes{bytes_}, start{std::chrono::steady_clock::now()} {}
+        : stall{stall_}, bytes{bytes_},
+          start{Enabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}} {}
 
     ~ScopedStall() {
+        if constexpr (!Enabled) {
+            return;
+        }
         const auto elapsed = std::chrono::steady_clock::now() - start;
         Record(stall, std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count(), bytes);
     }
@@ -121,6 +133,9 @@ public:
     /// Records the time so far once it adds up to at least min_elapsed, so a scope that lasts
     /// several frames is accounted to the frames it spans.
     void Checkpoint(std::chrono::nanoseconds min_elapsed) noexcept {
+        if constexpr (!Enabled) {
+            return;
+        }
         const auto now = std::chrono::steady_clock::now();
         if (now - start < min_elapsed) {
             return;

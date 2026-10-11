@@ -200,6 +200,10 @@ void BufferCache::InvalidateMemory(VAddr device_addr, u64 size, bool assume_lock
     });
 }
 
+void BufferCache::InvalidateMemoryAhead(VAddr device_addr, u64 size) {
+    memory_tracker->ExtendWriteFault(device_addr, size);
+}
+
 std::tuple<const Buffer*, VAddr, VAddr> BufferCache::GetReadbackWindow(VAddr device_addr,
                                                                        u64 size) {
     const u32 first_block = device_addr >> block_shift;
@@ -208,7 +212,7 @@ std::tuple<const Buffer*, VAddr, VAddr> BufferCache::GetReadbackWindow(VAddr dev
 
     // GPU-modified ranges come as many small scattered islands,
     // so the download is widened to a window around the request
-    constexpr u64 WindowSize = 512_KB;
+    constexpr u64 WindowSize = SHADPS4_READBACK_WINDOW_KIB * 1_KB;
     const VAddr arena_end = arena->cpu_addr + arena->size_bytes;
     const VAddr window_start =
         std::max<VAddr>(Common::AlignDown(device_addr, WindowSize), arena->cpu_addr);
@@ -232,12 +236,15 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
         // Waiting for the GPU there on every read of GPU written memory took over a third of
         // its time with precise readbacks, which some games need for their effects.
         std::shared_ptr<Readback> readback;
-        const auto asked = std::chrono::steady_clock::now();
+        const auto asked = Common::Perf::Enabled ? std::chrono::steady_clock::now()
+                                                 : std::chrono::steady_clock::time_point{};
         liverpool->SendCommand<true>([&] {
-            readback_stats.pickup_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                            std::chrono::steady_clock::now() - asked)
-                                            .count();
-            ++readback_stats.pickups;
+            if constexpr (Common::Perf::Enabled) {
+                readback_stats.pickup_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                std::chrono::steady_clock::now() - asked)
+                                                .count();
+                ++readback_stats.pickups;
+            }
             readback = StartReadback(device_addr, size);
         });
         if (readback && !FinishReadback(*readback)) {
@@ -260,19 +267,21 @@ std::shared_ptr<BufferCache::Readback> BufferCache::StartReadback(VAddr device_a
 
     // How far behind the GPU is when game threads read back, and whether the copy could go
     // ahead of the command buffer being recorded, for the summary.
-    auto* const work_semaphore = scheduler.GetWorkSemaphore();
-    work_semaphore->Refresh();
-    const u64 last_submitted = scheduler.CurrentTick() - 1;
-    readback_stats.in_flight +=
-        last_submitted - std::min(work_semaphore->KnownGpuTick(), last_submitted);
-    if (!runtime.IsTouchedInSession(arena, window_start - arena->cpu_addr,
-                                    window_end - window_start)) {
-        ++readback_stats.untouched;
-    }
-    if (std::ranges::any_of(compute_ring_writes, [&](const auto& range) {
-            return range.first < window_end && window_start < range.second;
-        })) {
-        ++readback_stats.compute_ring;
+    if constexpr (Common::Perf::Enabled) {
+        auto* const work_semaphore = scheduler.GetWorkSemaphore();
+        work_semaphore->Refresh();
+        const u64 last_submitted = scheduler.CurrentTick() - 1;
+        readback_stats.in_flight +=
+            last_submitted - std::min(work_semaphore->KnownGpuTick(), last_submitted);
+        if (!runtime.IsTouchedInSession(arena, window_start - arena->cpu_addr,
+                                        window_end - window_start)) {
+            ++readback_stats.untouched;
+        }
+        if (std::ranges::any_of(compute_ring_writes, [&](const auto& range) {
+                return range.first < window_end && window_start < range.second;
+            })) {
+            ++readback_stats.compute_ring;
+        }
     }
 
     // Game threads mostly read back the same memory again and again, a few times a frame.
@@ -293,7 +302,9 @@ std::shared_ptr<BufferCache::Readback> BufferCache::StartReadback(VAddr device_a
         // Another game thread is already waiting for this memory, or it was copied back ahead
         // of this one touching it: wait for the same copy.
         if (!readback->stale && readback->start <= window_start && window_end <= readback->end) {
-            ++readback_stats.joined;
+            if constexpr (Common::Perf::Enabled) {
+                ++readback_stats.joined;
+            }
             RatePrefetch(*readback, true);
             return readback;
         }
@@ -311,7 +322,9 @@ std::shared_ptr<BufferCache::Readback> BufferCache::StartReadback(VAddr device_a
     if (!readback) {
         return nullptr;
     }
-    ++readback_stats.on_fault;
+    if constexpr (Common::Perf::Enabled) {
+        ++readback_stats.on_fault;
+    }
     const bool on_graphics = readback->semaphore == scheduler.GetWorkSemaphore();
     SubmitReadbacks(on_graphics, !on_graphics);
     return readback;
@@ -395,13 +408,17 @@ void BufferCache::PrefetchReadbacks() {
         }
         if (window.skip > 0) {
             --window.skip;
-            ++readback_stats.skipped;
+            if constexpr (Common::Perf::Enabled) {
+                ++readback_stats.skipped;
+            }
             continue;
         }
         const auto [arena, start, end] = GetReadbackWindow(window.start, window.end - window.start);
         if (const auto readback = RecordReadback(arena, start, end)) {
             readback->prefetched = true;
-            ++readback_stats.prefetched;
+            if constexpr (Common::Perf::Enabled) {
+                ++readback_stats.prefetched;
+            }
             if (readback->semaphore == scheduler.GetWorkSemaphore()) {
                 on_graphics = true;
             } else {
@@ -423,7 +440,7 @@ void BufferCache::PrefetchReadbacks() {
         finished_readbacks_cv.notify_one();
     }
 
-    if (now - last_readback_report >= std::chrono::seconds{10}) {
+    if (Common::Perf::Enabled && now - last_readback_report >= std::chrono::seconds{10}) {
         last_readback_report = now;
         const double pickups = static_cast<double>(std::max<u64>(readback_stats.pickups, 1));
         LOG_INFO(Render,
@@ -581,7 +598,9 @@ void BufferCache::PruneReadbacks() {
         }
         // Copies that went stale were counted against their window when recovered.
         if (readback->applied.load(std::memory_order_acquire)) {
-            readback_stats.written_ahead += readback->applied_ahead ? 1 : 0;
+            if constexpr (Common::Perf::Enabled) {
+                readback_stats.written_ahead += readback->applied_ahead ? 1 : 0;
+            }
             RatePrefetch(*readback, true);
         }
         staging_pool.FreeDeferred(readback->staging);

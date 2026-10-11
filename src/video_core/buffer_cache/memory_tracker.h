@@ -136,6 +136,12 @@ public:
         });
     }
 
+    void ExtendWriteFault(VAddr cpu_addr, u64 size) noexcept {
+        IteratePages(cpu_addr, size, [](RegionManager* manager, u64 offset, u64 size) {
+            manager->ExtendWriteFault(offset, size);
+        });
+    }
+
     /// Mark region as modified from the CPU where the GPU didn't modify it. Where it did, the
     /// GPU copy is newer than the rest of the memory and has to be kept.
     void MarkRegionAsCpuModifiedUnlessGpuModified(VAddr cpu_addr, u64 size) noexcept {

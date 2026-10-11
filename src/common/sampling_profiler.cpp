@@ -3,7 +3,7 @@
 
 #include "common/sampling_profiler.h"
 
-#ifdef _WIN32
+#if defined(_WIN32) && SHADPS4_ENABLE_PERF_PROFILING
 
 #include <algorithm>
 #include <array>
