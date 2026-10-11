@@ -220,7 +220,11 @@ void GameController::SetMouseTouchpadState(bool touch_down, float x, float y, bo
 void GameController::SetTouchscreenTwoFingerClick(bool enabled) {
     std::lock_guard lock{m_state_mutex};
     m_touchpad_click.two_finger_click = enabled;
-    PushStateLocked();
+    // Input configuration is loaded before the kernel clock is initialized.
+    // Update the button now; normal polling publishes the state once running.
+    const int contacts = static_cast<int>(m_touchscreen_contacts[0]) +
+                         static_cast<int>(m_touchscreen_contacts[1]);
+    m_state.OnButton(OrbisPadButtonDataOffset::TouchPad, m_touchpad_click.Pressed(contacts));
 }
 
 bool GameController::ToggleTouchscreenTwoFingerClick() {
