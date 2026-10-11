@@ -23,6 +23,16 @@ public:
         float y;
     };
 
+    int ContactCount() const {
+        return static_cast<int>(contacts[0].down) + static_cast<int>(contacts[1].down);
+    }
+
+    bool CanStartContact(bool captured, bool focused) const {
+        // UI capture is decided for the gesture's first contact. A synthetic
+        // mouse-down from that contact must not steal its second finger.
+        return focused && (!captured || ContactCount() != 0);
+    }
+
     std::optional<Update> Handle(Action action, std::uint64_t device, std::uint64_t finger,
                                  float x, float y) {
         Contact* contact = nullptr;

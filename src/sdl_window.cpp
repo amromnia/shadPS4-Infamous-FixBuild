@@ -399,15 +399,18 @@ void WindowSDL::OnResize() {
 
 void WindowSDL::OnTouchscreenEvent(const SDL_Event* event, bool captured) {
     const auto& touch = event->tfinger;
-    const bool releasing = event->type == SDL_EVENT_FINGER_UP ||
-                           event->type == SDL_EVENT_FINGER_CANCELED;
-    if (touch.touchID == SDL_MOUSE_TOUCHID ||
-        (touch.windowID != SDL_GetWindowID(window) && !(releasing && touch.windowID == 0))) {
+    const bool starting = event->type == SDL_EVENT_FINGER_DOWN;
+    const bool focused = (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+    if (touch.touchID == SDL_MOUSE_TOUCHID) {
         return;
     }
-    // Only a new gesture is captured by UI; existing contacts must still move/release.
-    if (event->type == SDL_EVENT_FINGER_DOWN &&
-        (captured || !(SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS))) {
+    // Some touch reports have no associated window. Route new ones only to the
+    // focused game window; existing contacts must also release outside the window.
+    if (starting && ((touch.windowID != 0 && touch.windowID != SDL_GetWindowID(window)) ||
+                     !touchscreen.CanStartContact(captured, focused))) {
+        LOG_INFO(Input, "Touchscreen touchpad: rejected finger down (window {}, focus {}, UI {}, "
+                        "active contacts {})",
+                 touch.windowID, focused, captured, touchscreen.ContactCount());
         return;
     }
     using Action = Input::TouchscreenTouchpad::Action;
@@ -415,11 +418,15 @@ void WindowSDL::OnTouchscreenEvent(const SDL_Event* event, bool captured) {
                           : event->type == SDL_EVENT_FINGER_MOTION ? Action::Motion
                                                                   : Action::Up;
     if (auto update = touchscreen.Handle(action, touch.touchID, touch.fingerID, touch.x, touch.y)) {
-        if (action == Action::Down) {
-            LOG_INFO(Input, "Touchscreen touchpad: finger slot {}, position ({:.3f}, {:.3f})",
-                     update->slot, update->x, update->y);
+        if (action != Action::Motion) {
+            LOG_INFO(Input, "Touchscreen touchpad: slot {} {}, position ({:.3f}, {:.3f}), "
+                            "active contacts {}",
+                     update->slot, update->down ? "down" : "up", update->x, update->y,
+                     touchscreen.ContactCount());
         }
         controllers[0]->SetTouchscreenState(update->slot, update->down, update->x, update->y);
+    } else if (starting) {
+        LOG_INFO(Input, "Touchscreen touchpad: ignored finger down (slots full or invalid position)");
     }
 }
 

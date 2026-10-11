@@ -25,6 +25,49 @@ TEST(TouchscreenTouchpad, ContinuousSwipeAndRelease) {
     EXPECT_FALSE(pad.Handle(Action::Motion, 1, 42, 0.5f, 0.5f));
 }
 
+TEST(TouchscreenTouchpad, SecondFingerJoinsGameGestureAfterMouseCaptureChanges) {
+    Pad pad;
+    EXPECT_FALSE(pad.CanStartContact(true, true)); // First finger belongs to UI.
+    EXPECT_TRUE(pad.CanStartContact(false, true));
+    pad.Handle(Action::Down, 1, 1, 0.2f, 0.8f);
+    EXPECT_EQ(pad.ContactCount(), 1);
+    EXPECT_TRUE(pad.CanStartContact(true, true)); // Game already owns this gesture.
+    pad.Handle(Action::Down, 1, 2, 0.8f, 0.8f);
+    EXPECT_EQ(pad.ContactCount(), 2);
+    EXPECT_FALSE(pad.CanStartContact(false, false)); // Focus loss always wins.
+    pad.ReleaseAll();
+    EXPECT_EQ(pad.ContactCount(), 0);
+    EXPECT_FALSE(pad.CanStartContact(true, true)); // New gesture checks UI again.
+}
+
+TEST(TouchscreenTouchpad, BothSidesStayHeldAndSwipeUpTogether) {
+    Pad pad;
+    auto left = pad.Handle(Action::Down, 1, 10, 0.2f, 0.8f);
+    auto right = pad.Handle(Action::Down, 1, 20, 0.8f, 0.8f);
+    ASSERT_TRUE(left);
+    ASSERT_TRUE(right);
+    EXPECT_NE(left->slot, right->slot);
+    for (int step = 0; step < 10; ++step) {
+        const float y = 0.8f - 0.06f * step;
+        left = pad.Handle(Action::Motion, 1, 10, 0.2f, y);
+        right = pad.Handle(Action::Motion, 1, 20, 0.8f, y);
+        ASSERT_TRUE(left);
+        ASSERT_TRUE(right);
+        EXPECT_TRUE(left->down);
+        EXPECT_TRUE(right->down);
+        EXPECT_EQ(pad.ContactCount(), 2);
+        EXPECT_FLOAT_EQ(left->y, right->y);
+    }
+    pad.Handle(Action::Up, 1, 10, 0.2f, 0.2f);
+    EXPECT_EQ(pad.ContactCount(), 1);
+    right = pad.Handle(Action::Motion, 1, 20, 0.8f, 0.1f);
+    ASSERT_TRUE(right);
+    EXPECT_TRUE(right->down);
+    EXPECT_EQ(right->slot, 1);
+    pad.Handle(Action::Up, 1, 20, 0.8f, 0.1f);
+    EXPECT_EQ(pad.ContactCount(), 0);
+}
+
 TEST(TouchscreenTouchpad, StableSlotsAndDeviceIdentity) {
     Pad pad;
     EXPECT_EQ(pad.Handle(Action::Down, 1, 0, 0.1f, 0.2f)->slot, 0);

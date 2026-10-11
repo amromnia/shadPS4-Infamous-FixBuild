@@ -25,7 +25,9 @@ Back/View or keyboard Space for center). For click-and-drag, hold that binding
 and drag a finger. The fixed-position binding cannot move a live screen contact.
 
 Canceled touches, minimizing, losing focus and quitting release both contacts.
-Gestures starting in captured emulator UI do not reach the game. Already-started
+Gestures starting in captured emulator UI do not reach the game. A second finger
+can join a game-owned gesture even if mouse UI capture changes after the first
+touch. Already-started
 game contacts still receive movement and release if UI capture changes. SDL's
 touch-generated mouse events can operate the overlay but are excluded from
 guest mouse/key bindings. Mouse and physical touchpad updates yield contact
@@ -63,3 +65,20 @@ On the Ally, test the Second Son swipe prompt in both directions, then test a
 held contact while pressing Back/View. Repeat after lifting and touching again,
 with two fingers, and after opening an overlay or switching away from the game.
 Touchscreen motion does not implement controller gyro/shake input.
+
+## Two-sided hold followed by an upward swipe
+
+Hold two fingers simultaneously around 20% and 80% of the game window width,
+near the lower half of the window, then slide both upward without lifting.
+Start away from the physical screen edges (Windows edge gestures can consume
+input), and leave room above your fingers for the subsequent upward motion.
+Touch contact is distinct from a mechanical touchpad click; use the existing
+click binding as well if the prompt specifically requires pressing the pad.
+
+The log now reports `active contacts 2` when both fingers are accepted, along
+with down/up positions and rejected initial contacts. If the game still ignores
+the gesture, retain that run's log so we can distinguish a missing second OS
+contact, misplaced contacts, premature release and a game-side input issue.
+Windowless reports route to the focused game window; motion/release for known
+contacts remain valid after crossing the window boundary. Disconnecting a
+controller also resets contact ownership.

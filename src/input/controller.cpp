@@ -283,6 +283,7 @@ void GameController::DisconnectController() {
     m_mouse_motion_active = false;
     m_emu_shake_start = 0;
     m_next_touch_id = 1;
+    m_touchscreen_contacts = {};
     m_touch_down_timestamp = 0;
     m_state.connected = false;
     m_last_orientation_update = 0;
