@@ -10,10 +10,14 @@ include(FetchContent)
 FetchContent_MakeAvailable(googletest)
 
 set(TEST_TARGETS
+    shadps4_touchscreen_test
     shadps4_settings_test
     shadps4_ngs2_test
     shadps4_gcn_test
 )
+
+add_executable(shadps4_touchscreen_test input/test_touchscreen_touchpad.cpp)
+target_link_libraries(shadps4_touchscreen_test PRIVATE GTest::gtest_main)
 
 set(SETTINGS_TEST_SOURCES
     # Under test

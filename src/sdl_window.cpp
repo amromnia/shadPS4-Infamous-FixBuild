@@ -194,7 +194,9 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controller
     }
 }
 
-WindowSDL::~WindowSDL() = default;
+WindowSDL::~WindowSDL() {
+    ReleaseTouchscreen();
+}
 
 void WindowSDL::SetIcon(std::span<const u8> png_data) {
     if (png_data.empty()) {
@@ -210,6 +212,27 @@ void WindowSDL::WaitEvent() {
     SDL_Event event;
 
     if (!SDL_WaitEvent(&event)) {
+        return;
+    }
+
+    // Let the overlay receive SDL's synthetic mouse input, but never turn a screen
+    // touch into both a pad contact and a mapped mouse button/guest mouse event.
+    const bool touch_mouse =
+        (event.type == SDL_EVENT_MOUSE_MOTION && event.motion.which == SDL_TOUCH_MOUSEID) ||
+        ((event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) &&
+         event.button.which == SDL_TOUCH_MOUSEID);
+    if (touch_mouse) {
+        ImGui::Core::ProcessEvent(&event);
+        return;
+    }
+    if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST || event.type == SDL_EVENT_WINDOW_MINIMIZED ||
+        event.type == SDL_EVENT_QUIT) {
+        ReleaseTouchscreen();
+    }
+    if (event.type == SDL_EVENT_FINGER_DOWN || event.type == SDL_EVENT_FINGER_MOTION ||
+        event.type == SDL_EVENT_FINGER_UP || event.type == SDL_EVENT_FINGER_CANCELED) {
+        const bool captured = ImGui::Core::ProcessEvent(&event);
+        OnTouchscreenEvent(&event, captured);
         return;
     }
 
@@ -372,6 +395,38 @@ void WindowSDL::ReleaseKeyboard() {
 void WindowSDL::OnResize() {
     SDL_GetWindowSizeInPixels(window, &width, &height);
     ImGui::Core::OnResize();
+}
+
+void WindowSDL::OnTouchscreenEvent(const SDL_Event* event, bool captured) {
+    const auto& touch = event->tfinger;
+    const bool releasing = event->type == SDL_EVENT_FINGER_UP ||
+                           event->type == SDL_EVENT_FINGER_CANCELED;
+    if (touch.touchID == SDL_MOUSE_TOUCHID ||
+        (touch.windowID != SDL_GetWindowID(window) && !(releasing && touch.windowID == 0))) {
+        return;
+    }
+    // Only a new gesture is captured by UI; existing contacts must still move/release.
+    if (event->type == SDL_EVENT_FINGER_DOWN &&
+        (captured || !(SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS))) {
+        return;
+    }
+    using Action = Input::TouchscreenTouchpad::Action;
+    const Action action = event->type == SDL_EVENT_FINGER_DOWN ? Action::Down
+                          : event->type == SDL_EVENT_FINGER_MOTION ? Action::Motion
+                                                                  : Action::Up;
+    if (auto update = touchscreen.Handle(action, touch.touchID, touch.fingerID, touch.x, touch.y)) {
+        if (action == Action::Down) {
+            LOG_INFO(Input, "Touchscreen touchpad: finger slot {}, position ({:.3f}, {:.3f})",
+                     update->slot, update->x, update->y);
+        }
+        controllers[0]->SetTouchscreenState(update->slot, update->down, update->x, update->y);
+    }
+}
+
+void WindowSDL::ReleaseTouchscreen() {
+    for (const auto& update : touchscreen.ReleaseAll()) {
+        controllers[0]->SetTouchscreenState(update.slot, false, update.x, update.y);
+    }
 }
 
 Uint32 wheelOffCallback(void* og_event, Uint32 timer_id, Uint32 interval) {

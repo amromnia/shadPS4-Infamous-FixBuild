@@ -199,6 +199,40 @@ void GameController::SetTouchpadState(int touch_index, bool touch_down, float x,
     }
 
     std::lock_guard lock{m_state_mutex};
+    if (m_touchscreen_contacts[0] || m_touchscreen_contacts[1]) {
+        return; // A polling mouse or physical touchpad must not cancel a touchscreen gesture.
+    }
+    SetTouchpadStateLocked(touch_index, touch_down, x, y);
+}
+
+void GameController::SetMouseTouchpadState(bool touch_down, float x, float y, bool clicked) {
+    std::lock_guard lock{m_state_mutex};
+    if (m_touchscreen_contacts[0] || m_touchscreen_contacts[1]) {
+        return;
+    }
+    m_state.OnButton(Libraries::Pad::OrbisPadButtonDataOffset::TouchPad, clicked);
+    SetTouchpadStateLocked(0, touch_down, x, y);
+}
+
+void GameController::SetTouchscreenState(int touch_index, bool touch_down, float x, float y) {
+    if (touch_index < 0 || touch_index >= 2) {
+        return;
+    }
+    std::lock_guard lock{m_state_mutex};
+    if (!touch_down && !m_touchscreen_contacts[touch_index]) {
+        return;
+    }
+    if (touch_down && !m_touchscreen_contacts[0] && !m_touchscreen_contacts[1]) {
+        // Take ownership with fresh contacts/IDs, even if another input source was held.
+        m_state.touchpad[0].state = false;
+        m_state.touchpad[1].state = false;
+        m_touch_down_timestamp = 0;
+    }
+    m_touchscreen_contacts[touch_index] = touch_down;
+    SetTouchpadStateLocked(touch_index, touch_down, x, y);
+}
+
+void GameController::SetTouchpadStateLocked(int touch_index, bool touch_down, float x, float y) {
     const u64 timestamp = Libraries::Kernel::sceKernelGetProcessTime();
     const bool was_pressed = m_state.touchpad[0].state || m_state.touchpad[1].state;
     auto& touch = m_state.touchpad[touch_index];

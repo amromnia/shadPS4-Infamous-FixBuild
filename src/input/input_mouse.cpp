@@ -106,11 +106,10 @@ void EmulateGyro(GameController* controller, u32 interval) {
 void EmulateTouchpad(GameController* controller, u32 interval) {
     float x, y;
     SDL_MouseButtonFlags mouse_buttons = SDL_GetMouseState(&x, &y);
-    controller->SetTouchpadState(0, (mouse_buttons & SDL_BUTTON_LMASK) != 0,
-                                 std::clamp(x / g_window->GetWidth(), 0.0f, 1.0f),
-                                 std::clamp(y / g_window->GetHeight(), 0.0f, 1.0f));
-    controller->Button(Libraries::Pad::OrbisPadButtonDataOffset::TouchPad,
-                       (mouse_buttons & SDL_BUTTON_RMASK) != 0);
+    controller->SetMouseTouchpadState((mouse_buttons & SDL_BUTTON_LMASK) != 0,
+                                     std::clamp(x / g_window->GetWidth(), 0.0f, 1.0f),
+                                     std::clamp(y / g_window->GetHeight(), 0.0f, 1.0f),
+                                     (mouse_buttons & SDL_BUTTON_RMASK) != 0);
 }
 
 void ApplyMouseInputBlockers() {

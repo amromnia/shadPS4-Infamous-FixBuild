@@ -183,6 +183,8 @@ bool ProcessEvent(SDL_Event* event) {
     // Don't block release/up events
     case SDL_EVENT_MOUSE_MOTION:
     case SDL_EVENT_MOUSE_WHEEL:
+    case SDL_EVENT_FINGER_DOWN:
+    case SDL_EVENT_FINGER_MOTION:
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
         const auto& io = GetIO();
         return io.WantCaptureMouse && io.Ctx->NavWindow != nullptr &&

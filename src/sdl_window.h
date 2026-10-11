@@ -9,6 +9,7 @@
 #include "common/types.h"
 #include "core/libraries/pad/pad.h"
 #include "input/controller.h"
+#include "input/touchscreen_touchpad.h"
 
 struct SDL_Window;
 struct SDL_Gamepad;
@@ -84,6 +85,8 @@ private:
     void OnResize();
     void OnKeyboardMouseInput(const SDL_Event* event);
     void OnGamepadEvent(const SDL_Event* event);
+    void OnTouchscreenEvent(const SDL_Event* event, bool captured);
+    void ReleaseTouchscreen();
 
 private:
     s32 width;
@@ -93,6 +96,7 @@ private:
     SDL_Window* window{};
     bool is_shown{};
     bool is_open{true};
+    Input::TouchscreenTouchpad touchscreen;
 };
 
 void SetWindowIcon(SDL_Window* window, const std::vector<u8>& png);

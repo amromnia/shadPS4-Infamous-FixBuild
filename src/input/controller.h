@@ -116,6 +116,8 @@ public:
     void PollLightColour();
     bool SetVibration(u8 smallMotor, u8 largeMotor);
     void SetTouchpadState(int touchIndex, bool touchDown, float x, float y);
+    void SetTouchscreenState(int touchIndex, bool touchDown, float x, float y);
+    void SetMouseTouchpadState(bool touchDown, float x, float y, bool clicked);
 
     float gyro_buf[3] = {0.0f, 0.0f, 0.0f}, accel_buf[3] = {0.0f, 9.81f, 0.0f};
     s32 user_id = Libraries::UserService::ORBIS_USER_SERVICE_USER_ID_INVALID;
@@ -124,6 +126,8 @@ public:
 private:
     // m_state_mutex must be held by the caller.
     void PushStateLocked(u64 timestamp = 0);
+    void SetTouchpadStateLocked(int touchIndex, bool touchDown, float x, float y);
+    std::array<bool, 2> m_touchscreen_contacts{};
     void UpdateOrientationLocked(u64 timestamp);
     void EnableMotionEmulationLocked();
     void UpdateEmulatedMotionLocked(u64 timestamp);

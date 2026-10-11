@@ -50,7 +50,7 @@ void State::OnAxis(Axis axis, int value, u64 timestamp, bool smooth) {
 
 void State::OnTouchpad(int touch_index, bool is_down, float x, float y) {
     touchpad[touch_index].state = is_down;
-    touchpad[touch_index].x = static_cast<u16>(x * 1920);
+    touchpad[touch_index].x = static_cast<u16>(x * 1919);
     touchpad[touch_index].y = static_cast<u16>(y * 941);
 }
 
